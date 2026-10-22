@@ -147,7 +147,7 @@ QAsgard is pre-configured for automated deployment to **GitHub Pages** using Git
    ```
 
 ---
-№№ Test on: https://vasilvarshilov.github.io/QAsgard
+## Test link: https://vasilvarshilov.github.io/QAsgard
 
 ## License
 
