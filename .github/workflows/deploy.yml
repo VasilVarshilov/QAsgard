@@ -40,6 +40,17 @@ jobs:
       - name: Build static production bundle
         run: bun run build
 
+      - name: Debug build output
+        run: |
+          echo "===== ROOT ====="
+          ls -la
+
+          echo "===== DIST ====="
+          ls -la dist || true
+
+          echo "===== DIST INDEX ====="
+          cat dist/index.html || true
+
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
 
