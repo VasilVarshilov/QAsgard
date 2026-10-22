@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+package-lock.json
+bun.lock
+.aistudio/
+public/
+*.log
