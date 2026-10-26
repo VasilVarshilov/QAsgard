@@ -117,6 +117,7 @@ interface RepositoryViewProps {
   ) => void;
   onOpenCreateRepository?: () => void;
   onOpenImportRepository?: () => void;
+  onRequestCreateRun?: (params: { repoId?: string; caseId?: string; suiteId?: string }) => void;
 }
 
 export const RepositoryView: React.FC<RepositoryViewProps> = ({
@@ -152,6 +153,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   onImportRepository,
   onOpenCreateRepository,
   onOpenImportRepository,
+  onRequestCreateRun,
 }) => {
   // Navigation sidebar collapse
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -176,11 +178,9 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const [favoriteSuiteIds, setFavoriteSuiteIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem(`fav_suites_${project.id}`);
-      return stored
-        ? new Set(JSON.parse(stored))
-        : new Set(['suite-install-infosystems', 'suite-tax-settings']);
+      return stored ? new Set(JSON.parse(stored)) : new Set<string>();
     } catch {
-      return new Set(['suite-install-infosystems', 'suite-tax-settings']);
+      return new Set<string>();
     }
   });
 
@@ -344,7 +344,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const [newSeverity, setNewSeverity] = useState<TestSeverity>('blocker');
   const [newLayer, setNewLayer] = useState<TestLayer>('e2e');
   const [newAutomation, setNewAutomation] = useState<AutomationStatus>('manual');
-  const [newTags, setNewTags] = useState('zugferd, compliance');
+  const [newTags, setNewTags] = useState('smoke, regression');
 
   // Multi-Selection State
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
@@ -993,14 +993,20 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           {!sidebarCollapsed ? (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md">
-                {isAllProjects ? <Layers className="w-4 h-4" /> : project.key.slice(0, 2)}
+                {allProjects.length === 0 || !project.id ? (
+                  <Folder className="w-4 h-4" />
+                ) : isAllProjects ? (
+                  <Layers className="w-4 h-4" />
+                ) : (
+                  project.key.slice(0, 2)
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-bold text-slate-100 truncate block leading-tight">
-                  {project.name}
+                  {allProjects.length === 0 || !project.id ? 'No projects yet' : project.name}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono leading-none block">
-                  {project.key}
+                  {allProjects.length === 0 || !project.id ? '0 projects' : project.key}
                 </span>
               </div>
               <button
@@ -1163,7 +1169,38 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
       {/* =========================================================================
           MAIN WORKSPACE (Toolbar + 3-Column Split: Suite Tree | Test List | Preview)
       ========================================================================= */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#13141f]">
+      {allProjects.length === 0 || !project.id ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-[#13141f]">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
+            <Folder className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">No projects yet</h2>
+          <p className="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+            Create your first QA project to start authoring test suites, folders, and test cases.
+          </p>
+          <div className="flex items-center gap-3">
+            {onOpenCreateProject && (
+              <button
+                onClick={onOpenCreateProject}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-all shadow-md hover:shadow-indigo-500/25 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create your first project</span>
+              </button>
+            )}
+            {onOpenImportRepository && (
+              <button
+                onClick={onOpenImportRepository}
+                className="px-5 py-2.5 bg-[#202234] hover:bg-[#282a40] text-slate-200 border border-[#2e3146] rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import Existing Repository</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col min-w-0 bg-[#13141f]">
         {/* TOP TOOLBAR: Title, Counts, Search, AI Copilot, Actions */}
         <header className="px-5 py-2.5 border-b border-[#262838] bg-[#181926] flex items-center justify-between gap-3 shrink-0 flex-wrap">
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -1181,8 +1218,19 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
             <div className="relative">
               <button
                 onClick={() => setShowRepoDropdown((prev) => !prev)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({
+                    isOpen: true,
+                    x: e.clientX,
+                    y: e.clientY,
+                    type: 'repo',
+                    targetRepo: activeRepository,
+                  });
+                }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-950/40 to-[#202234] hover:from-indigo-900/60 hover:to-[#282a3e] border border-indigo-500/40 hover:border-indigo-400 text-white font-bold text-xs cursor-pointer transition-all shadow-sm group"
-                title="Switch repository or create new repository in this project / Избери или създай репозитори"
+                title="Switch repository (Десен бутон за Create Test Run / Switch or right-click to test run)"
               >
                 <Folder className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                 <span className="max-w-[200px] truncate text-white">
@@ -1237,6 +1285,18 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                           onClick={() => {
                             onSelectRepository?.(repo.id);
                             setShowRepoDropdown(false);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setShowRepoDropdown(false);
+                            setContextMenu({
+                              isOpen: true,
+                              x: e.clientX,
+                              y: e.clientY,
+                              type: 'repo',
+                              targetRepo: repo,
+                            });
                           }}
                           className={`p-2 rounded-lg flex items-center justify-between cursor-pointer transition-colors group ${
                             isSelected
@@ -1680,9 +1740,17 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
             {/* Test Cases Table Rows */}
             <div className="flex-1 overflow-y-auto divide-y divide-[#202234] p-2 no-scrollbar">
               {displayedCases.length === 0 ? (
-                <div className="p-12 text-center space-y-3 text-slate-500">
-                  <p className="text-xs">No test cases match the active filter or suite.</p>
-                  <div className="flex items-center justify-center gap-2">
+                <div className="p-12 text-center space-y-3 text-slate-400">
+                  <div className="w-12 h-12 rounded-xl bg-[#1a1b2c] text-slate-500 flex items-center justify-center mx-auto mb-2">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-sm font-semibold text-slate-200">No test cases found</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    {projectCases.length === 0
+                      ? 'Your test repository is empty. Create your first manual test or use quick add.'
+                      : 'No test cases match the active filter or suite.'}
+                  </p>
+                  <div className="flex items-center justify-center gap-2 pt-2">
                     <button
                       onClick={() => {
                         setEditorTestCase(null);
@@ -2221,6 +2289,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* =========================================================================
           WINDOWS EXPLORER STYLE CONTEXT MENU
@@ -2228,6 +2297,26 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
       <RepositoryContextMenu
         contextMenu={contextMenu}
         onClose={() => setContextMenu((prev) => ({ ...prev, isOpen: false }))}
+        onCreateTestRun={(target) => {
+          if (onRequestCreateRun) {
+            if (target.type === 'case') {
+              onRequestCreateRun({
+                caseId: target.testCase?.id,
+                repoId: target.testCase?.repositoryId || selectedRepositoryId || undefined,
+                suiteId: target.testCase?.suiteId,
+              });
+            } else if (target.type === 'suite') {
+              onRequestCreateRun({
+                suiteId: target.suite?.id === '__repo_root__' ? undefined : target.suite?.id,
+                repoId: target.suite?.repositoryId || selectedRepositoryId || undefined,
+              });
+            } else if (target.type === 'repo') {
+              onRequestCreateRun({
+                repoId: target.repoId || selectedRepositoryId || undefined,
+              });
+            }
+          }
+        }}
         isSuiteExpanded={Boolean(
           contextMenu.targetSuite && expandedSuiteIds.has(contextMenu.targetSuite.id)
         )}
@@ -2601,51 +2690,63 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
               </button>
             </div>
             <div className="space-y-1.5 max-h-60 overflow-y-auto">
-              {/* All Projects Choice */}
-              <div
-                onClick={() => {
-                  onSelectProject?.({
-                    id: 'all',
-                    organizationId: project.organizationId || 'org-1',
-                    name: 'All Projects',
-                    key: 'ALL',
-                    description:
-                      'Enterprise consolidated overview displaying test cases, suites, test runs, and defects across all projects.',
-                    suiteCount: allProjects.reduce((acc, p) => acc + p.suiteCount, 0),
-                    caseCount: allProjects.reduce((acc, p) => acc + p.caseCount, 0),
-                    openBugsCount: allProjects.reduce((acc, p) => acc + p.openBugsCount, 0),
-                    updatedAt: new Date().toISOString(),
-                  });
-                  onSelectSuite(null);
-                  setShowProjectSelectorModal(false);
-                }}
-                className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-colors mb-2 ${
-                  isAllProjects
-                    ? 'bg-indigo-600/30 border-indigo-500 text-white font-bold'
-                    : 'bg-[#1e1f2e] border-indigo-900/50 text-slate-200 hover:bg-[#25283c]'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
+              {allProjects.length === 0 ? (
+                <div className="py-6 px-3 text-center">
+                  <Folder className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-70" />
+                  <p className="text-xs font-semibold text-slate-300">No projects yet</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 mb-3">
+                    Create your first QA project to get started
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* All Projects Choice */}
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                      isAllProjects ? 'bg-indigo-500 text-white' : 'bg-[#262838] text-indigo-400'
+                    onClick={() => {
+                      onSelectProject?.({
+                        id: 'all',
+                        organizationId: project.organizationId || 'org-1',
+                        name: 'All Projects',
+                        key: 'ALL',
+                        description:
+                          'Enterprise consolidated overview displaying test cases, suites, test runs, and defects across all projects.',
+                        suiteCount: allProjects.reduce((acc, p) => acc + p.suiteCount, 0),
+                        caseCount: allProjects.reduce((acc, p) => acc + p.caseCount, 0),
+                        openBugsCount: allProjects.reduce((acc, p) => acc + p.openBugsCount, 0),
+                        updatedAt: new Date().toISOString(),
+                      });
+                      onSelectSuite(null);
+                      setShowProjectSelectorModal(false);
+                    }}
+                    className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-colors mb-2 ${
+                      isAllProjects
+                        ? 'bg-indigo-600/30 border-indigo-500 text-white font-bold'
+                        : 'bg-[#1e1f2e] border-indigo-900/50 text-slate-200 hover:bg-[#25283c]'
                     }`}
                   >
-                    <Layers className="w-4 h-4" />
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                          isAllProjects ? 'bg-indigo-500 text-white' : 'bg-[#262838] text-indigo-400'
+                        }`}
+                      >
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="block font-semibold">All Projects</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          ALL • All {allProjects.length} projects combined
+                        </span>
+                      </div>
+                    </div>
+                    {isAllProjects && <Check className="w-4 h-4 text-indigo-400" />}
                   </div>
-                  <div>
-                    <span className="block font-semibold">All Projects</span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      ALL • All {allProjects.length} projects combined
-                    </span>
-                  </div>
-                </div>
-                {isAllProjects && <Check className="w-4 h-4 text-indigo-400" />}
-              </div>
 
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1 pb-0.5">
-                Individual Projects
-              </div>
+                  <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-1 pb-0.5">
+                    Individual Projects
+                  </div>
+                </>
+              )}
 
               {allProjects.map((p) => (
                 <div
@@ -3113,7 +3214,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                                 type="text"
                                 value={importTargetRepoName}
                                 onChange={(e) => setImportTargetRepoName(e.target.value)}
-                                placeholder="напр. ZUGFeRD Premex, Invoicing API, Regression"
+                                placeholder="напр. Payments API, Mobile Checkout, Regression"
                                 className="w-full bg-[#12131e] border border-emerald-500/60 focus:border-emerald-400 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                               />
                             </div>

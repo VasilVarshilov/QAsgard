@@ -563,12 +563,12 @@ You are an expert QA Engineer, QA Architect, Test Manager, Business Analyst, Pro
 Your purpose is to help users create, improve, analyze, execute, and maintain high-quality test assets.
 
 CONTEXT ACCESS:
-Organization: ${context.organization?.name || 'FinFlow Technologies'}
-Project: ${context.project?.name || 'FinFlow Core Payment Gateway'} (Key: ${context.project?.key || 'PAY'})
+Organization: ${context.organization?.name || 'Workspace'}
+Project: ${context.project?.name || 'Active Project'} (Key: ${context.project?.key || 'PRJ'})
 Active Test Suite: ${context.activeSuite?.name || 'All Test Suites'}
-Total Cases in Repo: ${context.totalCases || 14}
-Suites in Project: ${context.suitesCount || 6}
-Active Defects: ${context.defectsCount || 4}
+Total Cases in Repo: ${context.totalCases || 0}
+Suites in Project: ${context.suitesCount || 0}
+Active Defects: ${context.defectsCount || 0}
 
 Always adhere to ISTQB and IEEE 829/29119 best practices.
 When asked to generate test cases, provide complete, measurable test cases with ID, Title, Preconditions, Priority, Severity, Tags, and step-by-step action tables with measurable expected results.`;
@@ -758,31 +758,31 @@ function generateSmartTestCases(
   if (isInvoice) {
     return [
       {
-        title: 'Verify ZUGFeRD 2.2 / Factur-X electronic invoice XML schema validation',
-        description: 'Ensure generated e-invoices strictly adhere to EN 16931 profile standards and valid cross-industry invoice schemas.',
-        suiteName: suiteName || 'ZUGFeRD Invoicing',
+        title: 'Verify electronic invoice XML schema and metadata validation',
+        description: 'Ensure generated e-invoices strictly adhere to standardized profile schemas and legal billing specifications.',
+        suiteName: suiteName || 'Invoice Validation',
         type: 'functional',
         priority: 'high',
         severity: 'blocker',
         layer: 'api',
-        preconditions: 'Invoice dataset with VAT IDs and line items initialized.',
+        preconditions: 'Invoice dataset with tax IDs and line items initialized.',
         steps: [
-          { action: 'Generate electronic invoice PDF/A-3 container with embedded ZUGFeRD XML', expectedResult: 'File generates with MIME application/pdf and embedded factur-x.xml', data: 'Invoice #INV-2026-001' },
-          { action: 'Extract embedded XML attachment and validate against EN 16931 XSD schema', expectedResult: 'Schema validation returns zero fatal errors and zero compliance warnings', data: 'factur-x.xml' },
+          { action: 'Generate electronic invoice PDF container with embedded schema XML', expectedResult: 'File generates with MIME application/pdf and embedded XML attachment', data: 'Invoice #INV-2026-001' },
+          { action: 'Extract embedded XML attachment and validate against standard XSD schema', expectedResult: 'Schema validation returns zero fatal errors and zero compliance warnings', data: 'invoice.xml' },
         ],
-        tags: ['zugferd', 'factur-x', 'compliance'],
+        tags: ['e-invoice', 'schema', 'compliance'],
       },
       {
         title: 'Verify rejection of malformed VAT ID or missing mandatory IBAN elements',
         description: 'Negative validation ensuring invoice generation aborts when required legal billing attributes are missing.',
-        suiteName: suiteName || 'ZUGFeRD Invoicing',
+        suiteName: suiteName || 'Invoice Validation',
         type: 'boundary',
         priority: 'high',
         severity: 'critical',
         layer: 'api',
         preconditions: 'Invoice authoring payload loaded in staging API.',
         steps: [
-          { action: 'Dispatch invoice creation with invalid VAT tax number "DE999999999X"', expectedResult: 'API returns HTTP 422 Unprocessable Entity with message: "Invalid EU VAT ID format"', data: 'VAT: DE999999999X' },
+          { action: 'Dispatch invoice creation with invalid VAT tax number "XX999999999"', expectedResult: 'API returns HTTP 422 Unprocessable Entity with validation error', data: 'VAT: XX999999999' },
         ],
         tags: ['negative-test', 'vat', 'validation'],
       },

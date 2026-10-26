@@ -17,6 +17,11 @@ import {
   INITIAL_REQUIREMENTS,
   ALL_PROJECTS_ID,
   ALL_PROJECTS,
+  EMPTY_PROJECT,
+  DEMO_PROJECT_IDS,
+  isDemoProject,
+  isDemoProjectId,
+  isDemoUser,
 } from './data/mockData';
 import {
   Organization,
@@ -90,10 +95,14 @@ export default function App() {
         JSON.parse(localStorage.getItem('qasgard_deleted_project_ids') || '[]')
       );
       const saved = localStorage.getItem('qasgard_projects');
-      const list = saved ? JSON.parse(saved) : INITIAL_PROJECTS;
-      return list.filter((p: Project) => !deletedIds.has(p.id));
+      if (!saved) return [];
+      const list = JSON.parse(saved);
+      if (!Array.isArray(list)) return [];
+      const clean = list.filter((p: Project) => !deletedIds.has(p.id) && !isDemoProject(p));
+      localStorage.setItem('qasgard_projects', JSON.stringify(clean));
+      return clean;
     } catch {
-      return INITIAL_PROJECTS;
+      return [];
     }
   });
 
@@ -108,18 +117,53 @@ export default function App() {
         JSON.parse(localStorage.getItem('qasgard_deleted_project_ids') || '[]')
       );
       if (data.projects) {
-        const filteredProjects = data.projects.filter((p) => !deletedIds.has(p.id));
+        const filteredProjects = data.projects.filter(
+          (p) => !deletedIds.has(p.id) && !isDemoProject(p)
+        );
         setProjects(filteredProjects);
+        if (filteredProjects.length === 0) {
+          setCurrentProject(EMPTY_PROJECT);
+        } else if (!filteredProjects.some((p) => p.id === currentProject.id)) {
+          setCurrentProject(filteredProjects[0]);
+        }
       }
-      if (data.suites && data.suites.length > 0) setTestSuites(data.suites);
-      if (data.testCases && data.testCases.length > 0)
-        setTestCases(sortTestCasesChronological(data.testCases));
-      if (data.defects) setDefects(data.defects);
-      if (data.testRuns) setTestRuns(data.testRuns);
-      if (data.testPlans) setTestPlans(data.testPlans);
-      if (data.auditLogs && data.auditLogs.length > 0) setAuditLogs(data.auditLogs);
-      if (data.users && data.users.length > 0) setUsers(data.users);
-      if (data.requirements && data.requirements.length > 0) setRequirements(data.requirements);
+      if (data.suites) {
+        setTestSuites(data.suites.filter((s) => !isDemoProjectId(s.projectId)));
+      }
+      if (data.testCases) {
+        setTestCases(
+          sortTestCasesChronological(data.testCases.filter((c) => !isDemoProjectId(c.projectId)))
+        );
+      }
+      if (data.defects) {
+        setDefects(data.defects.filter((d) => !isDemoProjectId(d.projectId)));
+      }
+      if (data.testRuns) {
+        setTestRuns(data.testRuns.filter((r) => !isDemoProjectId(r.projectId)));
+      }
+      if (data.testPlans) {
+        setTestPlans(data.testPlans.filter((p) => !isDemoProjectId(p.projectId)));
+      }
+      if (data.auditLogs) {
+        setAuditLogs(
+          data.auditLogs.filter((log) => {
+            const str = JSON.stringify(log).toLowerCase();
+            return (
+              !str.includes('zugferd') &&
+              !str.includes('finflow') &&
+              !str.includes('shopsphere') &&
+              !str.includes('auth0') &&
+              !str.includes('payment gateway')
+            );
+          })
+        );
+      }
+      if (data.users) {
+        setUsers(data.users.filter((u) => !isDemoUser(u)));
+      }
+      if (data.requirements) {
+        setRequirements(data.requirements.filter((r) => !isDemoProjectId(r.projectId)));
+      }
 
       // Restore Previous Session & Navigation State on Startup
       const [savedSuiteId, savedTab, savedProjectId, savedAdminSubTab] = await Promise.all([
@@ -132,7 +176,7 @@ export default function App() {
       if (savedTab) setActiveTab(savedTab);
       if (savedAdminSubTab) setAdminSubTab(savedAdminSubTab);
       if (savedProjectId && data.projects) {
-        const proj = data.projects.find((p) => p.id === savedProjectId);
+        const proj = data.projects.find((p) => p.id === savedProjectId && !isDemoProject(p));
         if (proj) setCurrentProject(proj);
       }
       if (savedSuiteId) setSelectedSuiteId(savedSuiteId);
@@ -162,7 +206,7 @@ export default function App() {
   }, [projects, isDbReady]);
 
   const [currentProject, setCurrentProject] = useState<Project>(
-    () => projects[0] || INITIAL_PROJECTS[0]
+    () => projects[0] || EMPTY_PROJECT
   );
 
   // Multiple Repositories state per project
@@ -171,19 +215,16 @@ export default function App() {
       const saved = localStorage.getItem('qasgard_repositories');
       if (saved) {
         const parsed: TestRepository[] = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const clean = parsed.filter((r) => !isDemoProjectId(r.projectId));
+          localStorage.setItem('qasgard_repositories', JSON.stringify(clean));
+          return clean;
+        }
       }
     } catch {
       // fallback
     }
-    return INITIAL_PROJECTS.map((p) => ({
-      id: `repo-${p.id}-default`,
-      projectId: p.id,
-      name: 'Main Repository',
-      description: `Default test repository for ${p.name}`,
-      isDefault: true,
-      createdAt: new Date().toISOString(),
-    }));
+    return [];
   });
 
   useEffect(() => {
@@ -197,16 +238,38 @@ export default function App() {
   // Persistent selected repository ID per project
   const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(() => {
     try {
-      const initialProjId = (projects[0] || INITIAL_PROJECTS[0])?.id;
+      const initialProjId = (projects[0] || ALL_PROJECTS)?.id;
       return localStorage.getItem(`qasgard_active_repo_${initialProjId}`) || null;
     } catch {
       return null;
     }
   });
 
+  // Pending Create Run context request (from context menu right click on repo or test case)
+  const [pendingCreateRunContext, setPendingCreateRunContext] = useState<{
+    isOpen: boolean;
+    repoId?: string;
+    caseId?: string;
+    suiteId?: string;
+  } | null>(null);
+
+  const handleRequestCreateRunFromContext = (params: {
+    repoId?: string;
+    caseId?: string;
+    suiteId?: string;
+  }) => {
+    setActiveTab('runs');
+    setPendingCreateRunContext({
+      isOpen: true,
+      repoId: params.repoId,
+      caseId: params.caseId,
+      suiteId: params.suiteId,
+    });
+  };
+
   // When currentProject changes, sync its active repository
   useEffect(() => {
-    if (currentProject.id === ALL_PROJECTS_ID) {
+    if (!currentProject || currentProject.id === ALL_PROJECTS_ID) {
       setSelectedRepositoryId('all');
       return;
     }
@@ -222,11 +285,11 @@ export default function App() {
     } catch {
       // ignore
     }
-  }, [currentProject.id, repositories]);
+  }, [currentProject?.id, repositories]);
 
   const handleSelectRepository = (repoId: string | null) => {
     setSelectedRepositoryId(repoId);
-    if (repoId && currentProject.id && currentProject.id !== ALL_PROJECTS_ID) {
+    if (repoId && currentProject?.id && currentProject.id !== ALL_PROJECTS_ID) {
       try {
         localStorage.setItem(`qasgard_active_repo_${currentProject.id}`, repoId);
       } catch {
@@ -236,7 +299,7 @@ export default function App() {
   };
 
   const projectRepositories = useMemo(() => {
-    if (currentProject.id === ALL_PROJECTS_ID) return repositories;
+    if (!currentProject || currentProject.id === ALL_PROJECTS_ID) return repositories;
     let list = repositories.filter((r) => r.projectId === currentProject.id);
     if (list.length === 0) {
       const defaultRepo: TestRepository = {
@@ -250,7 +313,7 @@ export default function App() {
       list = [defaultRepo];
     }
     return list;
-  }, [repositories, currentProject.id, currentProject.name]);
+  }, [repositories, currentProject?.id, currentProject?.name]);
 
   const handleCreateRepository = (projectId: string, name: string, description?: string) => {
     const newRepo: TestRepository = {
@@ -362,14 +425,17 @@ export default function App() {
       const saved = localStorage.getItem('qasgard_users');
       if (saved) {
         const parsed: User[] = JSON.parse(saved);
-        const hasOutdatedUsers = parsed.some(
-          (u) =>
-            u.name === 'Sarah Chen' ||
-            u.name === 'Marcus Vance' ||
-            (u.email && u.email.includes('finflow.io'))
-        );
-        if (!hasOutdatedUsers && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter(
+            (u) =>
+              u.name !== 'Sarah Chen' &&
+              u.name !== 'Marcus Vance' &&
+              u.name !== 'Elena Rostova' &&
+              u.name !== 'David Kim' &&
+              u.name !== 'Alex Mercer' &&
+              !(u.email && u.email.includes('finflow.io'))
+          );
+          return clean;
         }
       }
     } catch {
@@ -390,39 +456,25 @@ export default function App() {
   }, [users, isDbReady]);
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    return users.find((u) => u.role === 'admin') || users[0] || INITIAL_USERS[0];
+    return (
+      users.find((u) => u.role === 'admin') ||
+      users[0] || {
+        id: 'usr-admin',
+        name: 'Workspace Admin',
+        email: 'admin@qasgard.local',
+        avatar: '',
+        role: 'admin',
+        organizationId: currentOrg.id,
+        status: 'active',
+      }
+    );
   });
 
   const [testSuites, setTestSuites] = useState<TestSuite[]>(() => {
     try {
       const saved = localStorage.getItem('qasgard_suites');
-      let loaded: TestSuite[] = saved ? JSON.parse(saved) : INITIAL_SUITES;
-      // Auto-repair missing parent relationships in case parentId was previously dropped
-      loaded = loaded.map((s) => {
-        if (!s.parentId) {
-          const rootSuite = loaded.find(
-            (p) =>
-              p.id !== s.id &&
-              p.projectId === s.projectId &&
-              !p.parentId &&
-              (p.id === 'suite-zugferd-root' ||
-                p.name.toLowerCase().includes('zugferd implementation'))
-          );
-          if (
-            rootSuite &&
-            (s.id === 'suite-notice-msg' ||
-              s.name.toLowerCase().includes('notice message') ||
-              s.id === 'suite-install-infosystems' ||
-              s.id === 'suite-tax-settings' ||
-              s.id.startsWith('suite-')) &&
-            s.id !== rootSuite.id
-          ) {
-            return { ...s, parentId: rootSuite.id };
-          }
-        }
-        return s;
-      });
-      return loaded;
+      const loaded: TestSuite[] = saved ? JSON.parse(saved) : INITIAL_SUITES;
+      return loaded.filter((s) => !isDemoProjectId(s.projectId));
     } catch {
       return INITIAL_SUITES;
     }
@@ -442,8 +494,8 @@ export default function App() {
   const [testCases, setTestCases] = useState<TestCase[]>(() => {
     try {
       const saved = localStorage.getItem('qasgard_cases');
-      const loaded = saved ? JSON.parse(saved) : INITIAL_TEST_CASES;
-      return sortTestCasesChronological(loaded);
+      const loaded: TestCase[] = saved ? JSON.parse(saved) : INITIAL_TEST_CASES;
+      return sortTestCasesChronological(loaded.filter((c) => !isDemoProjectId(c.projectId)));
     } catch {
       return sortTestCasesChronological(INITIAL_TEST_CASES);
     }
@@ -463,7 +515,8 @@ export default function App() {
   const [testRuns, setTestRuns] = useState<TestRun[]>(() => {
     try {
       const saved = localStorage.getItem('qasgard_runs');
-      return saved ? JSON.parse(saved) : INITIAL_TEST_RUNS;
+      const loaded: TestRun[] = saved ? JSON.parse(saved) : INITIAL_TEST_RUNS;
+      return loaded.filter((r) => !isDemoProjectId(r.projectId));
     } catch {
       return INITIAL_TEST_RUNS;
     }
@@ -483,7 +536,8 @@ export default function App() {
   const [testPlans, setTestPlans] = useState<TestPlan[]>(() => {
     try {
       const saved = localStorage.getItem('qasgard_plans');
-      return saved ? JSON.parse(saved) : INITIAL_TEST_PLANS;
+      const loaded: TestPlan[] = saved ? JSON.parse(saved) : INITIAL_TEST_PLANS;
+      return loaded.filter((p) => !isDemoProjectId(p.projectId));
     } catch {
       return INITIAL_TEST_PLANS;
     }
@@ -503,7 +557,8 @@ export default function App() {
   const [defects, setDefects] = useState<Defect[]>(() => {
     try {
       const saved = localStorage.getItem('qasgard_defects');
-      return saved ? JSON.parse(saved) : INITIAL_DEFECTS;
+      const loaded: Defect[] = saved ? JSON.parse(saved) : INITIAL_DEFECTS;
+      return loaded.filter((d) => !isDemoProjectId(d.projectId));
     } catch {
       return INITIAL_DEFECTS;
     }
@@ -556,16 +611,21 @@ export default function App() {
 
   const isAllProjects = currentProject.id === ALL_PROJECTS_ID;
 
-  // Auto-recover current project if it was deleted
+  // Auto-recover current project if it was deleted or workspace is empty
   useEffect(() => {
-    if (
+    if (projects.length === 0) {
+      if (currentProject.id !== '') {
+        setCurrentProject(EMPTY_PROJECT);
+        setSelectedSuiteId(null);
+      }
+    } else if (
       currentProject.id !== ALL_PROJECTS_ID &&
       !projects.some((p) => p.id === currentProject.id)
     ) {
-      setCurrentProject(projects[0] || allProjectsCombined);
+      setCurrentProject(projects[0]);
       setSelectedSuiteId(null);
     }
-  }, [projects, currentProject.id, allProjectsCombined]);
+  }, [projects, currentProject.id]);
 
   // Live dynamic project statistics for dropdown selection
   const projectsWithCounts = useMemo(() => {
@@ -1179,7 +1239,7 @@ export default function App() {
       if (remainingProjects.length > 0) {
         setCurrentProject(remainingProjects[0]);
       } else {
-        setCurrentProject(allProjectsCombined);
+        setCurrentProject(EMPTY_PROJECT);
       }
       setSelectedSuiteId(null);
     }
@@ -1440,7 +1500,7 @@ export default function App() {
         ? currentProject.id
         : testSuites.find((s) => s.id === tc.suiteId)?.projectId ||
           projects[0]?.id ||
-          'proj-zugferd');
+          '');
 
     const parentProj = projects.find((p) => p.id === targetProjectId) || currentProject;
     const projectKeyPrefix = parentProj.id !== ALL_PROJECTS_ID ? parentProj.key : 'TC';
@@ -1571,7 +1631,7 @@ export default function App() {
       s.projectId ||
       (currentProject.id !== ALL_PROJECTS_ID
         ? currentProject.id
-        : projects[0]?.id || 'proj-zugferd');
+        : projects[0]?.id || '');
 
     const newSuite: TestSuite = {
       id: `suite-${Date.now()}`,
@@ -1666,7 +1726,7 @@ export default function App() {
     newSuites: Partial<TestSuite>[]
   ) => {
     const targetProjectId =
-      currentProject.id !== ALL_PROJECTS_ID ? currentProject.id : projects[0]?.id || 'proj-zugferd';
+      currentProject.id !== ALL_PROJECTS_ID ? currentProject.id : projects[0]?.id || '';
 
     if (newSuites.length > 0) {
       const suitesToAdd: TestSuite[] = newSuites.map((s, idx) => ({
@@ -1692,7 +1752,7 @@ export default function App() {
       runDraft.projectId ||
       (currentProject.id !== ALL_PROJECTS_ID
         ? currentProject.id
-        : projects[0]?.id || 'proj-zugferd');
+        : projects[0]?.id || '');
 
     const fullRun: TestRun = {
       id: `run-${Date.now()}`,
@@ -1766,7 +1826,7 @@ export default function App() {
             ? testCases.find((c) => c.id === def.testCaseId)?.projectId
             : undefined) ||
           projects[0]?.id ||
-          'proj-zugferd');
+          '');
 
     const targetCase = def.testCaseId ? testCases.find((c) => c.id === def.testCaseId) : undefined;
     const targetRun = def.runId ? testRuns.find((r) => r.id === def.runId) : undefined;
@@ -1819,7 +1879,7 @@ export default function App() {
       plan.projectId ||
       (currentProject.id !== ALL_PROJECTS_ID
         ? currentProject.id
-        : projects[0]?.id || 'proj-zugferd');
+        : projects[0]?.id || '');
 
     const fullPlan: TestPlan = {
       id: `plan-${Date.now()}`,
@@ -1879,10 +1939,18 @@ export default function App() {
   };
 
   const handleResetUsers = () => {
-    setUsers(INITIAL_USERS);
-    setCurrentUser(INITIAL_USERS[0]);
+    setUsers([]);
+    setCurrentUser({
+      id: 'usr-admin',
+      name: 'Workspace Admin',
+      email: 'admin@qasgard.local',
+      avatar: '',
+      role: 'admin',
+      organizationId: currentOrg.id,
+      status: 'active',
+    });
     try {
-      localStorage.setItem('qasgard_users', JSON.stringify(INITIAL_USERS));
+      localStorage.setItem('qasgard_users', JSON.stringify([]));
     } catch {
       // ignore
     }
@@ -1951,6 +2019,8 @@ export default function App() {
             onSelectRepository={handleSelectRepository}
             onOpenCreateRepository={() => setIsCreateRepoModalOpen(true)}
             onOpenImportRepository={() => setIsImportRepoModalOpen(true)}
+            onOpenCreateProject={() => setIsCreateProjectModalOpen(true)}
+            projectCount={projects.length}
           />
         )}
 
@@ -1991,6 +2061,7 @@ export default function App() {
             onImportRepository={handleImportRepository}
             onOpenCreateRepository={() => setIsCreateRepoModalOpen(true)}
             onOpenImportRepository={() => setIsImportRepoModalOpen(true)}
+            onRequestCreateRun={handleRequestCreateRunFromContext}
           />
         )}
 
@@ -2004,6 +2075,9 @@ export default function App() {
             onCreateRun={handleCreateRun}
             allProjects={projectsWithCounts}
             defects={activeDefects}
+            repositories={projectRepositories}
+            initialCreateContext={pendingCreateRunContext}
+            onClearInitialCreateContext={() => setPendingCreateRunContext(null)}
           />
         )}
 

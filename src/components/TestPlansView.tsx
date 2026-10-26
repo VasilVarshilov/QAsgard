@@ -65,8 +65,28 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({
       </div>
 
       {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {testPlans.map((plan) => (
+      {testPlans.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-12 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
+            <BookmarkCheck className="w-6 h-6 text-slate-400" />
+          </div>
+          <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+            No test plans found
+          </h3>
+          <p className="text-xs text-slate-400 mt-1 mb-4 max-w-sm mx-auto">
+            Create milestone-driven test plans to scope test cases for release gating and sign-offs.
+          </p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Create your first test plan</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {testPlans.map((plan) => (
           <div
             key={plan.id}
             className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all space-y-3"
@@ -108,6 +128,7 @@ export const TestPlansView: React.FC<TestPlansViewProps> = ({
           </div>
         ))}
       </div>
+      )}
 
       {/* New Test Plan Modal */}
       {showModal && (

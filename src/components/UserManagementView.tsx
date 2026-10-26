@@ -198,56 +198,77 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </div>
 
         <div className="divide-y divide-slate-200 dark:divide-slate-800">
-          {users.map((u) => (
-            <div
-              key={u.id}
-              className="p-4 flex items-center justify-between gap-4 text-xs hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
-            >
-              <div className="flex items-center space-x-3 truncate">
-                <img
-                  src={u.avatar}
-                  alt={u.name}
-                  className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                />
-                <div className="truncate">
-                  <div className="font-semibold text-slate-900 dark:text-white">{u.name}</div>
-                  <div className="text-slate-400 dark:text-slate-400 text-[11px] font-mono">
-                    {u.email}
+          {users.length === 0 ? (
+            <div className="py-12 px-4 text-center">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
+                <Users className="w-6 h-6 text-slate-400" />
+              </div>
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                No team members added yet
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1 mb-4 max-w-xs mx-auto">
+                Invite QA engineers, test managers, and leads to collaborate in this workspace.
+              </p>
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Invite Team Member</span>
+              </button>
+            </div>
+          ) : (
+            users.map((u) => (
+              <div
+                key={u.id}
+                className="p-4 flex items-center justify-between gap-4 text-xs hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+              >
+                <div className="flex items-center space-x-3 truncate">
+                  <img
+                    src={u.avatar}
+                    alt={u.name}
+                    className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+                  />
+                  <div className="truncate">
+                    <div className="font-semibold text-slate-900 dark:text-white">{u.name}</div>
+                    <div className="text-slate-400 dark:text-slate-400 text-[11px] font-mono">
+                      {u.email}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center space-x-3 shrink-0">
-                <select
-                  value={u.role}
-                  onChange={(e) => onUpdateRole(u.id, e.target.value as UserRole)}
-                  className="px-2.5 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 focus:outline-none"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="test_manager">Test Mgr</option>
-                  <option value="qa_lead">Test QA lead</option>
-                  <option value="qa_engineer">Test QA Eng</option>
-                  <option value="product_owner">Test Prod Owner</option>
-                  <option value="viewer">Test Viewer</option>
-                </select>
-
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  {u.status}
-                </span>
-
-                {onDeleteUser && (
-                  <button
-                    type="button"
-                    onClick={() => setUserToDelete(u)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                    title={`Remove member "${u.name}" / Премахни потребител`}
+                <div className="flex items-center space-x-3 shrink-0">
+                  <select
+                    value={u.role}
+                    onChange={(e) => onUpdateRole(u.id, e.target.value as UserRole)}
+                    className="px-2.5 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg font-medium text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 focus:outline-none"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                    <option value="admin">Admin</option>
+                    <option value="test_manager">Test Mgr</option>
+                    <option value="qa_lead">Test QA lead</option>
+                    <option value="qa_engineer">Test QA Eng</option>
+                    <option value="product_owner">Test Prod Owner</option>
+                    <option value="viewer">Test Viewer</option>
+                  </select>
+
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    {u.status}
+                  </span>
+
+                  {onDeleteUser && (
+                    <button
+                      type="button"
+                      onClick={() => setUserToDelete(u)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                      title={`Remove member "${u.name}" / Премахни потребител`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 

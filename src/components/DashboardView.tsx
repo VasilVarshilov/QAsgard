@@ -37,10 +37,22 @@ interface DashboardViewProps {
   onSelectRepository?: (repoId: string | null) => void;
   onOpenCreateRepository?: () => void;
   onOpenImportRepository?: () => void;
+  onOpenCreateProject?: () => void;
+  projectCount?: number;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
-  project,
+  project = {
+    id: 'all',
+    organizationId: 'org-1',
+    name: 'All Projects',
+    key: 'ALL',
+    description: '',
+    suiteCount: 0,
+    caseCount: 0,
+    openBugsCount: 0,
+    updatedAt: new Date().toISOString(),
+  },
   testCases,
   testSuites,
   testRuns,
@@ -55,25 +67,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectRepository,
   onOpenCreateRepository,
   onOpenImportRepository,
+  onOpenCreateProject,
+  projectCount = 0,
 }) => {
-  const defaultRepoId = `repo-${project.id}-default`;
+  const currentProjId = project?.id || 'all';
+  const defaultRepoId = `repo-${currentProjId}-default`;
   const projectRepos = React.useMemo(() => {
-    if (project.id === 'all') return repositories;
-    const filtered = repositories.filter((r) => r.projectId === project.id);
+    if (currentProjId === 'all') return repositories;
+    const filtered = repositories.filter((r) => r.projectId === currentProjId);
     if (filtered.length === 0) {
       return [
         {
           id: defaultRepoId,
-          projectId: project.id,
+          projectId: currentProjId,
           name: 'Main Repository',
-          description: `Default test repository for ${project.name}`,
+          description: `Default test repository for ${project?.name || 'Project'}`,
           isDefault: true,
           createdAt: new Date().toISOString(),
         },
       ];
     }
     return filtered;
-  }, [repositories, project.id, project.name, defaultRepoId]);
+  }, [repositories, currentProjId, project?.name, defaultRepoId]);
 
   const activeRepo = React.useMemo(() => {
     if (!selectedRepositoryId || selectedRepositoryId === 'all') {
@@ -102,12 +117,83 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       ? Math.round(
           (primaryRun.passedCount / (primaryRun.passedCount + primaryRun.failedCount)) * 100
         )
-      : 80;
+      : 0;
 
   const openDefects = defects.filter((d) => d.status === 'open' || d.status === 'in_progress');
   const blockerDefects = openDefects.filter(
     (d) => d.severity === 'blocker' || d.severity === 'critical'
   ).length;
+
+  if (projectCount === 0 || !project?.id || project.id === '') {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+        {/* Clean Workspace Header */}
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-0.5 text-[11px] font-semibold bg-indigo-400/20 text-indigo-200 border border-indigo-400/30 rounded-full flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-indigo-300" />
+              QAsgard Realm • Quality Engineering Platform
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white mt-2">
+            Clean Workspace • Ready for Testing
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1">
+            Your testing workspace is completely empty and ready. No demo projects or mock data are loaded. Create your first QA project to begin organizing test repositories, test suites, test cases, and runs.
+          </p>
+        </div>
+
+        {/* Big Empty State Card */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 p-10 sm:p-14 text-center shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-4">
+            <Layers className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">No projects yet</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1 mb-6">
+            Get started by creating your first QA project. Once created, you can add test suites, author test cases, run executions, and track defects.
+          </p>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            {onOpenCreateProject && (
+              <button
+                onClick={onOpenCreateProject}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-all shadow-md hover:shadow-indigo-500/25 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create your first project</span>
+              </button>
+            )}
+            <button
+              onClick={() => onNavigate('import-wizard')}
+              className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Import Existing Repository</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Empty Metrics Overview */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+            <span className="text-xs text-slate-400">Total Projects</span>
+            <div className="text-2xl font-bold text-slate-800 dark:text-white mt-1">0</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+            <span className="text-xs text-slate-400">Total Test Cases</span>
+            <div className="text-2xl font-bold text-slate-800 dark:text-white mt-1">0</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+            <span className="text-xs text-slate-400">Active Test Runs</span>
+            <div className="text-2xl font-bold text-slate-800 dark:text-white mt-1">0</div>
+          </div>
+          <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-center">
+            <span className="text-xs text-slate-400">Open Defects</span>
+            <div className="text-2xl font-bold text-slate-800 dark:text-white mt-1">0</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">

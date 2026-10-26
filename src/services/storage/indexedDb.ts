@@ -25,6 +25,9 @@ import {
   INITIAL_DEFECTS,
   INITIAL_AUDIT_LOGS,
   INITIAL_REQUIREMENTS,
+  isDemoProject,
+  isDemoProjectId,
+  isDemoUser,
 } from '../../data/mockData';
 
 export const DB_NAME = 'qasgard_browser_db';
@@ -250,7 +253,7 @@ class BrowserDatabase {
     });
   }
 
-  // First-Run Database Seeding & Migration
+  // First-Run Database Initialization & Data Loading with Deep Demo Purge
   public async initializeWorkspace(): Promise<{
     organization: Organization;
     projects: Project[];
@@ -263,91 +266,164 @@ class BrowserDatabase {
     auditLogs: AuditLogEntry[];
     requirements: Requirement[];
   }> {
-    const isInitialized = await this.getWorkspaceMeta<boolean>('workspaceInitialized');
-    const existingProjects = await this.getAll<Project>('projects');
-    const existingUsers = await this.getAll<User>('users');
+    // 1. Fetch current raw store records
+    const [
+      orgs,
+      allRawProjects,
+      allRawSuites,
+      allRawCases,
+      allRawRuns,
+      allRawPlans,
+      allRawDefects,
+      allRawUsers,
+      allRawAuditLogs,
+      allRawRequirements,
+    ] = await Promise.all([
+      this.getAll<Organization>('organization'),
+      this.getAll<Project>('projects'),
+      this.getAll<TestSuite>('suites'),
+      this.getAll<TestCase>('testCases'),
+      this.getAll<TestRun>('testRuns'),
+      this.getAll<TestPlan>('testPlans'),
+      this.getAll<Defect>('defects'),
+      this.getAll<User>('users'),
+      this.getAll<AuditLogEntry>('auditLogs'),
+      this.getAll<Requirement>('requirements'),
+    ]);
 
-    // If database already populated or workspace previously initialized, return current browser data
-    if (isInitialized || existingProjects.length > 0 || existingUsers.length > 0) {
-      // Check for legacy users and sanitize to the 6 official personas if needed
-      const hasLegacyUsers = existingUsers.some(
-        (u) =>
-          u.name === 'Sarah Chen' ||
-          u.name === 'Marcus Vance' ||
-          (u.email && u.email.includes('finflow.io'))
-      );
-      if (hasLegacyUsers) {
-        await this.clearStore('users');
-        await this.putMany('users', INITIAL_USERS);
-      }
-
-      const [
-        orgs,
-        projects,
-        suites,
-        testCases,
-        testRuns,
-        testPlans,
-        defects,
-        users,
-        auditLogs,
-        requirements,
-      ] = await Promise.all([
-        this.getAll<Organization>('organization'),
-        this.getAll<Project>('projects'),
-        this.getAll<TestSuite>('suites'),
-        this.getAll<TestCase>('testCases'),
-        this.getAll<TestRun>('testRuns'),
-        this.getAll<TestPlan>('testPlans'),
-        this.getAll<Defect>('defects'),
-        this.getAll<User>('users'),
-        this.getAll<AuditLogEntry>('auditLogs'),
-        this.getAll<Requirement>('requirements'),
-      ]);
-
-      // If requirements empty, seed initial requirements
-      let activeReqs = requirements;
-      if (!activeReqs || activeReqs.length === 0) {
-        await this.putMany('requirements', INITIAL_REQUIREMENTS);
-        activeReqs = INITIAL_REQUIREMENTS;
-      }
-
-      return {
-        organization: orgs[0] || INITIAL_ORGANIZATION,
-        projects,
-        suites,
-        testCases,
-        testRuns,
-        testPlans,
-        defects,
-        users: users.length > 0 ? users : INITIAL_USERS,
-        auditLogs,
-        requirements: activeReqs,
-      };
+    // 2. Identify demo projects and purge them permanently from IndexedDB
+    const demoProjects = allRawProjects.filter((p) => isDemoProject(p));
+    if (demoProjects.length > 0) {
+      await Promise.all(demoProjects.map((p) => this.delete('projects', p.id)));
     }
 
-    // First time setup: Seed initial datasets from mockData into IndexedDB
-    await this.put('organization', INITIAL_ORGANIZATION);
-    await this.putMany('projects', INITIAL_PROJECTS);
-    await this.putMany('suites', INITIAL_SUITES);
-    await this.putMany('testCases', INITIAL_TEST_CASES);
-    await this.putMany('defects', INITIAL_DEFECTS);
-    await this.putMany('users', INITIAL_USERS);
-    await this.putMany('auditLogs', INITIAL_AUDIT_LOGS);
-    await this.putMany('requirements', INITIAL_REQUIREMENTS);
+    const validProjects = allRawProjects.filter((p) => !isDemoProject(p));
+    const validProjectIds = new Set(validProjects.map((p) => p.id));
+
+    // 3. Purge dependent suites, cases, runs, plans, defects, requirements for demo projects
+    const purgePromises: Promise<void>[] = [];
+
+    const validSuites = allRawSuites.filter((s) => {
+      const isDemo = isDemoProjectId(s.projectId) || !validProjectIds.has(s.projectId);
+      if (isDemo) purgePromises.push(this.delete('suites', s.id));
+      return !isDemo;
+    });
+
+    const validCases = allRawCases.filter((c) => {
+      const isDemo = isDemoProjectId(c.projectId) || !validProjectIds.has(c.projectId);
+      if (isDemo) purgePromises.push(this.delete('testCases', c.id));
+      return !isDemo;
+    });
+
+    const validRuns = allRawRuns.filter((r) => {
+      const isDemo = isDemoProjectId(r.projectId) || !validProjectIds.has(r.projectId);
+      if (isDemo) purgePromises.push(this.delete('testRuns', r.id));
+      return !isDemo;
+    });
+
+    const validPlans = allRawPlans.filter((p) => {
+      const isDemo = isDemoProjectId(p.projectId) || !validProjectIds.has(p.projectId);
+      if (isDemo) purgePromises.push(this.delete('testPlans', p.id));
+      return !isDemo;
+    });
+
+    const validDefects = allRawDefects.filter((d) => {
+      const isDemo = isDemoProjectId(d.projectId) || !validProjectIds.has(d.projectId);
+      if (isDemo) purgePromises.push(this.delete('defects', d.id));
+      return !isDemo;
+    });
+
+    const validRequirements = allRawRequirements.filter((req) => {
+      const isDemo = isDemoProjectId(req.projectId) || !validProjectIds.has(req.projectId);
+      if (isDemo) purgePromises.push(this.delete('requirements', req.id));
+      return !isDemo;
+    });
+
+    const validUsers = allRawUsers.filter((u) => {
+      const isDemo = isDemoUser(u);
+      if (isDemo) purgePromises.push(this.delete('users', u.id));
+      return !isDemo;
+    });
+
+    const validAuditLogs = allRawAuditLogs.filter((log) => {
+      const str = JSON.stringify(log).toLowerCase();
+      const isDemo =
+        str.includes('zugferd') ||
+        str.includes('finflow') ||
+        str.includes('shopsphere') ||
+        str.includes('auth0') ||
+        str.includes('payment gateway');
+      if (isDemo) purgePromises.push(this.delete('auditLogs', log.id));
+      return !isDemo;
+    });
+
+    if (purgePromises.length > 0) {
+      await Promise.all(purgePromises);
+    }
+
+    // 4. Clean workspace meta pointers
+    const lastActiveProjId = await this.getWorkspaceMeta<string>('lastActiveProjectId');
+    if (lastActiveProjId && (!validProjectIds.has(lastActiveProjId) || isDemoProjectId(lastActiveProjId))) {
+      await this.setWorkspaceMeta('lastActiveProjectId', null);
+    }
+    const lastSuiteId = await this.getWorkspaceMeta<string>('lastSelectedSuiteId');
+    if (lastSuiteId && (!validSuites.some((s) => s.id === lastSuiteId))) {
+      await this.setWorkspaceMeta('lastSelectedSuiteId', null);
+    }
+
+    // 5. Clean localStorage of demo projects and residual caches
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const savedProjects = localStorage.getItem('qasgard_projects');
+        if (savedProjects) {
+          const parsed = JSON.parse(savedProjects);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((p: Project) => !isDemoProject(p));
+            localStorage.setItem('qasgard_projects', JSON.stringify(clean));
+          }
+        }
+        const savedRepos = localStorage.getItem('qasgard_repositories');
+        if (savedRepos) {
+          const parsed = JSON.parse(savedRepos);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter((r: any) => validProjectIds.has(r.projectId));
+            localStorage.setItem('qasgard_repositories', JSON.stringify(clean));
+          }
+        }
+        [
+          'fav_suites_proj-zugferd',
+          'fav_suites_proj-finflow',
+          'fav_suites_proj-shopsphere',
+          'fav_suites_proj-auth0',
+          'fav_suites_all',
+          'recent_cases_proj-zugferd',
+          'recent_cases_proj-finflow',
+          'recent_cases_proj-shopsphere',
+          'recent_cases_proj-auth0',
+          'qasgard_active_project_id',
+        ].forEach((k) => localStorage.removeItem(k));
+      }
+    } catch {
+      // ignore
+    }
+
+    // 6. Ensure default organization config exists
+    if (orgs.length === 0) {
+      await this.put('organization', INITIAL_ORGANIZATION);
+    }
     await this.setWorkspaceMeta('workspaceInitialized', true);
 
     return {
-      organization: INITIAL_ORGANIZATION,
-      projects: INITIAL_PROJECTS,
-      suites: INITIAL_SUITES,
-      testCases: INITIAL_TEST_CASES,
-      testRuns: [],
-      testPlans: [],
-      defects: INITIAL_DEFECTS,
-      users: INITIAL_USERS,
-      auditLogs: INITIAL_AUDIT_LOGS,
-      requirements: INITIAL_REQUIREMENTS,
+      organization: orgs[0] || INITIAL_ORGANIZATION,
+      projects: validProjects,
+      suites: validSuites,
+      testCases: validCases,
+      testRuns: validRuns,
+      testPlans: validPlans,
+      defects: validDefects,
+      users: validUsers,
+      auditLogs: validAuditLogs,
+      requirements: validRequirements,
     };
   }
 
@@ -875,7 +951,7 @@ class BrowserDatabase {
           const suitesList: TestSuite[] = (parsed.suites || parsed.test_suites || []).map(
             (s: any) => ({
               id: s.id || `suite-migrated-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              projectId: s.projectId || s.project_id || targetProjectId || 'proj-zugferd',
+              projectId: s.projectId || s.project_id || targetProjectId || '',
               parentId: s.parentId || s.parent_id || null,
               name: s.name || s.title || 'Migrated Suite',
               description: s.description || '',
@@ -891,7 +967,7 @@ class BrowserDatabase {
           ).map((tc: any, idx: number) => ({
             id: tc.id || `case-migrated-${Date.now()}-${idx}`,
             key: tc.key || `MIG-${idx + 1}`,
-            projectId: tc.projectId || tc.project_id || targetProjectId || 'proj-zugferd',
+            projectId: tc.projectId || tc.project_id || targetProjectId || '',
             suiteId: tc.suiteId || tc.suite_id || suitesList[0]?.id || 'suite-root',
             suiteName: tc.suiteName || tc.suite_name || suitesList[0]?.name || 'Migrated Suite',
             title: tc.title || tc.name || `Migrated Test Case ${idx + 1}`,
@@ -928,7 +1004,7 @@ class BrowserDatabase {
           const casesList: TestCase[] = parsed.map((tc: any, idx: number) => ({
             id: tc.id || `case-migrated-${Date.now()}-${idx}`,
             key: tc.key || `MIG-${idx + 1}`,
-            projectId: tc.projectId || tc.project_id || targetProjectId || 'proj-zugferd',
+            projectId: tc.projectId || tc.project_id || targetProjectId || '',
             suiteId: tc.suiteId || tc.suite_id || 'suite-root',
             suiteName: tc.suiteName || tc.suite_name || 'Migrated Suite',
             title: tc.title || tc.name || `Migrated Test Case ${idx + 1}`,
@@ -969,7 +1045,7 @@ class BrowserDatabase {
             if (rawVals.length >= 3) {
               parsedSuites.push({
                 id: rawVals[0] || `suite-${Date.now()}-${parsedSuites.length}`,
-                projectId: rawVals[1] || targetProjectId || 'proj-zugferd',
+                projectId: rawVals[1] || targetProjectId || '',
                 name: rawVals[2] || 'Migrated Suite',
                 description: rawVals[3] || 'Migrated from external SQL dump',
                 caseCount: 0,
@@ -988,7 +1064,7 @@ class BrowserDatabase {
               parsedCases.push({
                 id: tcId,
                 key: `MIG-${parsedCases.length + 101}`,
-                projectId: targetProjectId || 'proj-zugferd',
+                projectId: targetProjectId || '',
                 suiteId: rawVals[1] || parsedSuites[0]?.id || 'suite-root',
                 suiteName: parsedSuites[0]?.name || 'Migrated SQL Suite',
                 title: rawVals[2] || `Migrated SQL Test Case ${parsedCases.length + 1}`,
@@ -1030,7 +1106,7 @@ class BrowserDatabase {
       if (counts.suites === 0 && counts.testCases === 0) {
         const fallbackSuite: TestSuite = {
           id: `suite-sql-${Date.now()}`,
-          projectId: targetProjectId || 'proj-zugferd',
+          projectId: targetProjectId || '',
           name: 'Migrated SQL Repository Archive',
           description: 'Created during external database migration',
           caseCount: 1,
@@ -1038,7 +1114,7 @@ class BrowserDatabase {
         const fallbackCase: TestCase = {
           id: `case-sql-${Date.now()}`,
           key: `MIG-001`,
-          projectId: targetProjectId || 'proj-zugferd',
+          projectId: targetProjectId || '',
           suiteId: fallbackSuite.id,
           suiteName: fallbackSuite.name,
           title: 'Verify migrated database integrity and schema constraints',

@@ -187,7 +187,7 @@ export const CopyProjectModal: React.FC<CopyProjectModalProps> = ({
                 setName(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="e.g. ZUGFeRD 4.3.0 Release Candidate"
+              placeholder="e.g. Core Platform 2.0 Release Candidate"
               className="w-full bg-[#13141f] border border-[#2d3044] rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
               autoFocus
             />

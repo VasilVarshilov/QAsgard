@@ -293,6 +293,20 @@ export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
         {/* ALL SUITES ROOT SELECTOR */}
         <div
           onClick={() => onSelectSuite(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onContextMenu(e, 'suite', {
+              id: '__repo_root__',
+              projectId: '',
+              name: 'Repository (All Cases)',
+              description: 'All repository test cases',
+              caseCount: cases.length,
+              order: 0,
+              createdAt: '',
+              updatedAt: '',
+            } as TestSuite);
+          }}
           className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
             selectedSuiteId === null
               ? 'bg-[#25283c] text-white font-semibold border-l-2 border-indigo-500 shadow-xs'
@@ -310,32 +324,50 @@ export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
 
         {/* HIERARCHICAL SUITE TREE NODES */}
         <div className="space-y-0.5">
-          {rootSuites.map((root) => (
-            <TreeNode
-              key={root.id}
-              suite={root}
-              childMap={childMap}
-              countMap={countMap}
-              selectedSuiteId={selectedSuiteId}
-              expandedSuiteIds={expandedSuiteIds}
-              onSelectSuite={onSelectSuite}
-              onToggleExpand={onToggleExpand}
-              onCollapseChildren={onCollapseChildren}
-              onExpandChildren={onExpandChildren}
-              favoriteSuiteIds={favoriteSuiteIds}
-              onToggleFavorite={onToggleFavorite}
-              onContextMenu={onContextMenu}
-              onAddSuite={onAddSuite}
-              onRenameSuite={onRenameSuite}
-              onDeleteSuite={onDeleteSuite}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              dragOverSuiteId={dragOverSuiteId}
-              level={0}
-            />
-          ))}
+          {rootSuites.length === 0 ? (
+            <div className="py-8 px-4 text-center">
+              <Folder className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-60" />
+              <p className="text-xs text-slate-300 font-semibold">No test suites found</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 mb-3">
+                Organize tests into modular suites and directories
+              </p>
+              <button
+                type="button"
+                onClick={() => onAddSuite()}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create your first suite</span>
+              </button>
+            </div>
+          ) : (
+            rootSuites.map((root) => (
+              <TreeNode
+                key={root.id}
+                suite={root}
+                childMap={childMap}
+                countMap={countMap}
+                selectedSuiteId={selectedSuiteId}
+                expandedSuiteIds={expandedSuiteIds}
+                onSelectSuite={onSelectSuite}
+                onToggleExpand={onToggleExpand}
+                onCollapseChildren={onCollapseChildren}
+                onExpandChildren={onExpandChildren}
+                favoriteSuiteIds={favoriteSuiteIds}
+                onToggleFavorite={onToggleFavorite}
+                onContextMenu={onContextMenu}
+                onAddSuite={onAddSuite}
+                onRenameSuite={onRenameSuite}
+                onDeleteSuite={onDeleteSuite}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                dragOverSuiteId={dragOverSuiteId}
+                level={0}
+              />
+            ))
+          )}
         </div>
       </div>
     </div>

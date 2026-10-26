@@ -367,9 +367,9 @@ export function exportSuiteAsMarkdown(
   md += `## 3. Formal Sign-Off\n\n`;
   md += `| Role | Name | Title | Date | Status |\n`;
   md += `| :--- | :--- | :--- | :--- | :--- |\n`;
-  md += `| Lead QA Architect | Marcus Vance | Staff QA Architect | ${new Date().toLocaleDateString()} | Approved |\n`;
-  md += `| VP of Engineering | Alex Rivera | VP Platform & Eng | ${new Date().toLocaleDateString()} | Approved |\n`;
-  md += `| Head of Quality | Elena Rostova | Director of QA & Compliance | ${new Date().toLocaleDateString()} | Approved |\n\n`;
+  md += `| Lead QA Architect | QA Lead | Staff QA Architect | ${new Date().toLocaleDateString()} | Approved |\n`;
+  md += `| Engineering Lead | Platform Lead | VP Platform & Eng | ${new Date().toLocaleDateString()} | Approved |\n`;
+  md += `| Quality Director | Compliance Officer | Director of QA & Compliance | ${new Date().toLocaleDateString()} | Approved |\n\n`;
   md += `*Generated automatically by QAsgard.*\n`;
 
   const cleanName = `${project.key}_${suiteName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.md`;

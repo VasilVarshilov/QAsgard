@@ -114,24 +114,10 @@ export const TestSuiteExportView: React.FC<TestSuiteExportViewProps> = ({
   const revisionHistory = [
     {
       version: 'v1.0',
-      date: '2026-09-15',
-      author: 'Admin (Lead QA)',
-      approvedBy: 'David Kim (Product Owner)',
-      summary: 'Initial baseline test suite specification for PCI tokenization.',
-    },
-    {
-      version: 'v1.1',
-      date: '2026-09-28',
-      author: 'Marcus Vance (Senior QA)',
-      approvedBy: 'Elena Rostova (Test Manager)',
-      summary: 'Added 3DS 2.0 biometric assertions and fallback matrix.',
-    },
-    {
-      version: 'v2.0',
-      date: '2026-10-05',
-      author: 'Elena Rostova (Test Manager)',
-      approvedBy: 'Alex Rivera (VP Eng)',
-      summary: 'Updated security thresholds to $50 and added automated Playwright hooks.',
+      date: new Date().toISOString().slice(0, 10),
+      author: 'QA Lead',
+      approvedBy: 'Product Owner',
+      summary: `Baseline test suite specification for ${project.name}.`,
     },
   ];
 
@@ -139,30 +125,30 @@ export const TestSuiteExportView: React.FC<TestSuiteExportViewProps> = ({
   const signOffOfficers = [
     {
       role: 'Principal QA Lead',
-      name: 'Marcus Vance',
-      title: 'Staff QA Architect',
-      date: 'October 05, 2026',
+      name: 'QA Lead',
+      title: 'QA Lead Architect',
+      date: new Date().toLocaleDateString(),
       status: 'Approved',
     },
     {
       role: 'VP of Engineering',
-      name: 'Alex Rivera',
-      title: 'VP of Engineering & Platform',
-      date: 'October 05, 2026',
+      name: 'Engineering Lead',
+      title: 'VP of Platform Engineering',
+      date: new Date().toLocaleDateString(),
       status: 'Approved',
     },
     {
-      role: 'Principal Product Manager',
-      name: 'David Kim',
-      title: 'Director of Payments Product',
-      date: 'October 05, 2026',
+      role: 'Product Owner',
+      name: 'Product Manager',
+      title: 'Principal Product Owner',
+      date: new Date().toLocaleDateString(),
       status: 'Approved',
     },
     {
       role: 'Information Security & Compliance',
-      name: 'Elena Rostova',
-      title: 'Head of Quality & Compliance',
-      date: 'October 05, 2026',
+      name: 'Compliance Officer',
+      title: 'Director of QA & Compliance',
+      date: new Date().toLocaleDateString(),
       status: 'Approved',
     },
   ];
@@ -872,7 +858,7 @@ export const TestSuiteExportView: React.FC<TestSuiteExportViewProps> = ({
                 <span className="text-slate-500 block text-[10px] uppercase font-bold">
                   Document Author
                 </span>
-                <span className="font-semibold text-slate-900">Elena Rostova (Test Lead)</span>
+                <span className="font-semibold text-slate-900">Lead QA Specialist</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px] uppercase font-bold">

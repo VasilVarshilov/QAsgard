@@ -144,7 +144,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                 setName(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="e.g. ZUGFeRD E-Invoice Core"
+              placeholder="e.g. Core Payment Gateway"
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-500 transition-colors"
               autoFocus
             />

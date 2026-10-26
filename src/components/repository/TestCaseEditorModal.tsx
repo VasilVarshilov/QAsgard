@@ -166,7 +166,7 @@ export const SHARED_STEPS_LIBRARY = [
       {
         action: 'Navigate to Menu -> Electronic Invoicing -> Queue',
         expectedResult: 'Invoice queue grid loads with status Active',
-        data: 'QUEUE_ID=ZUGFERD_IN',
+        data: 'QUEUE_ID=TRANSACTIONS_IN',
       },
     ],
   },
@@ -673,7 +673,7 @@ export const TestCaseEditorModal: React.FC<TestCaseEditorModalProps> = ({
         setSteps((prev) =>
           prev.map((s) => ({
             ...s,
-            expectedResult: `${s.expectedResult} (Validated against ISO 20022 and ZUGFeRD 2.4 rules)`,
+            expectedResult: `${s.expectedResult} (Validated against standard compliance and specification rules)`,
           }))
         );
       } else if (mode === 'negative') {

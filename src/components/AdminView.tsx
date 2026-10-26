@@ -30,6 +30,7 @@ import {
   User,
   AuditLogEntry,
 } from '../types';
+import { getLogoUrl, getIconSvgUrl } from '../utils/logo';
 
 import { ImportWizardView } from './ImportWizardView';
 import { TestSuiteExportView } from './TestSuiteExportView';
@@ -305,7 +306,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-slate-200/80 dark:border-slate-700 bg-slate-900 shadow-md shrink-0 flex items-center justify-center">
-              <img src="/logo.jpg" alt="QAsgard" className="w-full h-full object-cover" />
+              <img
+                src={getLogoUrl()}
+                alt="QAsgard"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.currentTarget as HTMLImageElement;
+                  if (!target.dataset.fallbackTried) {
+                    target.dataset.fallbackTried = '1';
+                    target.src = getIconSvgUrl();
+                  }
+                }}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">

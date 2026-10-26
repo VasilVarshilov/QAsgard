@@ -101,9 +101,45 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   const [stepCommentDraft, setStepCommentDraft] = useState<Record<number, string>>({});
   const [isCompletedModalOpen, setIsCompletedModalOpen] = useState(false);
 
-  // Active Timer
-  const [seconds, setSeconds] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(true);
+  // Active Timer Persistence Key
+  const getTimerKey = (testCaseId?: string) => {
+    return `qasgard_run_timer_${run.id}_${testCaseId || activeExecution?.testCaseId || 'default'}`;
+  };
+
+  // Active Timer (persisted across modal closes until Pass/Fail/Block or Complete Run)
+  const [seconds, setSeconds] = useState<number>(() => {
+    if (!activeExecution) return 0;
+    if (['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+      return activeExecution.durationSeconds || 0;
+    }
+    try {
+      const saved = localStorage.getItem(`qasgard_run_timer_${run.id}_${activeExecution.testCaseId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.seconds === 'number') {
+          return parsed.seconds;
+        }
+      }
+    } catch {}
+    return activeExecution.durationSeconds || 0;
+  });
+
+  const [timerRunning, setTimerRunning] = useState<boolean>(() => {
+    if (!activeExecution) return true;
+    if (['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+      return false;
+    }
+    try {
+      const saved = localStorage.getItem(`qasgard_run_timer_${run.id}_${activeExecution.testCaseId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.isRunning === 'boolean') {
+          return parsed.isRunning;
+        }
+      }
+    } catch {}
+    return true;
+  });
 
   // Execution notes & failure reasons
   const [failureReason, setFailureReason] = useState(activeExecution?.failureReason || '');
@@ -138,20 +174,87 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
     let interval: any = null;
     if (timerRunning) {
       interval = setInterval(() => {
-        setSeconds((prev) => prev + 1);
+        setSeconds((prev: number) => {
+          const next = prev + 1;
+          if (activeExecution && !['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+            try {
+              localStorage.setItem(
+                getTimerKey(activeExecution.testCaseId),
+                JSON.stringify({ seconds: next, isRunning: true, updatedAt: Date.now() })
+              );
+            } catch {}
+          }
+          return next;
+        });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timerRunning]);
+  }, [timerRunning, activeExecution?.testCaseId, run.id]);
 
-  // Sync state when switching cases
+  // Sync state when switching cases (restore persisted timer or case duration)
   useEffect(() => {
     if (activeExecution) {
       setFailureReason(activeExecution.failureReason || '');
       setStackTrace(activeExecution.stackTrace || '');
       setAiDiagnosis(null);
+
+      if (['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+        setSeconds(activeExecution.durationSeconds || 0);
+        setTimerRunning(false);
+        try {
+          localStorage.removeItem(getTimerKey(activeExecution.testCaseId));
+        } catch {}
+      } else {
+        try {
+          const saved = localStorage.getItem(getTimerKey(activeExecution.testCaseId));
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (typeof parsed.seconds === 'number') {
+              setSeconds(parsed.seconds);
+              setTimerRunning(typeof parsed.isRunning === 'boolean' ? parsed.isRunning : false);
+              return;
+            }
+          }
+        } catch {}
+        setSeconds(activeExecution.durationSeconds || 0);
+        setTimerRunning(true);
+      }
     }
-  }, [selectedIndex, activeExecution]);
+  }, [selectedIndex, activeExecution?.testCaseId]);
+
+  const handleToggleTimer = () => {
+    const nextRunning = !timerRunning;
+    setTimerRunning(nextRunning);
+    if (activeExecution && !['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+      try {
+        localStorage.setItem(
+          getTimerKey(activeExecution.testCaseId),
+          JSON.stringify({ seconds, isRunning: nextRunning, updatedAt: Date.now() })
+        );
+      } catch {}
+    }
+  };
+
+  const handleResetTimer = () => {
+    setSeconds(0);
+    if (activeExecution) {
+      try {
+        localStorage.removeItem(getTimerKey(activeExecution.testCaseId));
+      } catch {}
+    }
+  };
+
+  const handleSafeClose = () => {
+    if (activeExecution && !['passed', 'failed', 'blocked'].includes(activeExecution.status)) {
+      try {
+        localStorage.setItem(
+          getTimerKey(activeExecution.testCaseId),
+          JSON.stringify({ seconds, isRunning: timerRunning, updatedAt: Date.now() })
+        );
+      } catch {}
+    }
+    onClose();
+  };
 
   const formatTimer = (totalSec: number) => {
     const mins = Math.floor(totalSec / 60);
@@ -190,6 +293,13 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
 
     onUpdateExecution(run.id, updatedExecution);
 
+    // Auto clear saved timer if case finalized by steps
+    if (['passed', 'failed', 'blocked'].includes(newCaseStatus)) {
+      try {
+        localStorage.removeItem(getTimerKey(activeExecution.testCaseId));
+      } catch {}
+    }
+
     if (status === 'failed') {
       setFailedStepIndex(stepNumber);
     }
@@ -197,20 +307,27 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
 
   const handleCaseStatus = (status: ExecutionStatus) => {
     if (!activeExecution) return;
+    const finalSeconds = seconds;
     const updatedExecution: TestExecution = {
       ...activeExecution,
       status,
-      durationSeconds: activeExecution.durationSeconds + seconds,
+      durationSeconds: activeExecution.durationSeconds + finalSeconds,
       failureReason: status === 'failed' ? failureReason : '',
       stackTrace: status === 'failed' ? stackTrace : '',
     };
     onUpdateExecution(run.id, updatedExecution);
 
+    // Persisted timer is cleared once status is Pass/Fail/Block
+    if (['passed', 'failed', 'blocked'].includes(status)) {
+      try {
+        localStorage.removeItem(getTimerKey(activeExecution.testCaseId));
+      } catch {}
+    }
+
     // If passed or skipped, advance to next test case automatically
     if (status === 'passed' || status === 'skipped') {
-      if (selectedIndex < run.executions.length - 1) {
+      if (selectedIndex < sortedExecutions.length - 1) {
         setSelectedIndex(selectedIndex + 1);
-        setSeconds(0);
       }
     }
   };
@@ -520,6 +637,14 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   };
 
   const handleComplete = () => {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(`qasgard_run_timer_${run.id}`)) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch {}
     onCompleteRun(run.id);
     setIsCompletedModalOpen(true);
   };
@@ -527,7 +652,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   return (
     <div
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleSafeClose();
       }}
       className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150 relative"
     >
@@ -565,17 +690,17 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
             </span>
             <button
               type="button"
-              onClick={() => setTimerRunning(!timerRunning)}
+              onClick={handleToggleTimer}
               className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
-              title={timerRunning ? 'Pause timer' : 'Resume timer'}
+              title={timerRunning ? 'Паузирай таймера / Pause timer' : 'Пусни отново / Resume timer'}
             >
               {timerRunning ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
             </button>
             <button
               type="button"
-              onClick={() => setSeconds(0)}
+              onClick={handleResetTimer}
               className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
-              title="Reset stopwatch"
+              title="Нулирай таймера / Reset stopwatch"
             >
               <RotateCcw className="w-3 h-3" />
             </button>
@@ -600,7 +725,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleSafeClose}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
               title="Затвори (Esc)"
             >

@@ -17,21 +17,30 @@ import {
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
+  Play,
+  PlayCircle,
 } from 'lucide-react';
-import { TestSuite, TestCase } from '../../types';
+import { TestSuite, TestCase, TestRepository } from '../../types';
 
 export interface ContextMenuState {
   isOpen: boolean;
   x: number;
   y: number;
-  type: 'suite' | 'case';
+  type: 'suite' | 'case' | 'repo';
   targetSuite?: TestSuite;
   targetCase?: TestCase;
+  targetRepo?: TestRepository;
 }
 
 interface RepositoryContextMenuProps {
   contextMenu: ContextMenuState;
   onClose: () => void;
+  onCreateTestRun?: (target: {
+    type: 'suite' | 'case' | 'repo';
+    repoId?: string;
+    suite?: TestSuite;
+    testCase?: TestCase;
+  }) => void;
   onNewTestCase: (suiteId?: string) => void;
   onNewSuite: (parentId?: string) => void;
   onRenameSuite: (suite: TestSuite) => void;
@@ -55,6 +64,7 @@ interface RepositoryContextMenuProps {
 export const RepositoryContextMenu: React.FC<RepositoryContextMenuProps> = ({
   contextMenu,
   onClose,
+  onCreateTestRun,
   onNewTestCase,
   onNewSuite,
   onRenameSuite,
@@ -197,6 +207,23 @@ export const RepositoryContextMenu: React.FC<RepositoryContextMenuProps> = ({
         {/* SUITE CONTEXT MENU */}
         {contextMenu.type === 'suite' && contextMenu.targetSuite && (
           <>
+            <div className="py-1">
+              <button
+                onClick={() => {
+                  onCreateTestRun?.({
+                    type: 'suite',
+                    suite: contextMenu.targetSuite,
+                    repoId: contextMenu.targetSuite?.repositoryId,
+                  });
+                  onClose();
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#25283c] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Play className="w-3.5 h-3.5 fill-indigo-400 text-indigo-400" />
+                <span>Create Test Run / Създай Test Run</span>
+              </button>
+            </div>
+
             <div className="py-1">
               {onToggleExpandSuite && (
                 <button
@@ -353,6 +380,23 @@ export const RepositoryContextMenu: React.FC<RepositoryContextMenuProps> = ({
             <div className="py-1">
               <button
                 onClick={() => {
+                  onCreateTestRun?.({
+                    type: 'case',
+                    testCase: contextMenu.targetCase,
+                    repoId: contextMenu.targetCase?.repositoryId,
+                  });
+                  onClose();
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-[#25283c] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Play className="w-3.5 h-3.5 fill-indigo-400 text-indigo-400" />
+                <span>Create Test Run / Създай Test Run</span>
+              </button>
+            </div>
+
+            <div className="py-1">
+              <button
+                onClick={() => {
                   onOpenTestCase(contextMenu.targetCase!);
                   onClose();
                 }}
@@ -409,6 +453,25 @@ export const RepositoryContextMenu: React.FC<RepositoryContextMenuProps> = ({
               </button>
             </div>
           </>
+        )}
+
+        {/* REPOSITORY CONTEXT MENU */}
+        {contextMenu.type === 'repo' && (
+          <div className="py-1">
+            <button
+              onClick={() => {
+                onCreateTestRun?.({
+                  type: 'repo',
+                  repoId: contextMenu.targetRepo?.id,
+                });
+                onClose();
+              }}
+              className="w-full text-left px-3 py-1.5 hover:bg-[#25283c] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-2 cursor-pointer transition-colors"
+            >
+              <Play className="w-3.5 h-3.5 fill-indigo-400 text-indigo-400" />
+              <span>Create Test Run / Създай Test Run</span>
+            </button>
+          </div>
         )}
       </div>
     </>

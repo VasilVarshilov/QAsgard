@@ -273,7 +273,7 @@ export const ImportRepositoryModal: React.FC<ImportRepositoryModalProps> = ({
                             type="text"
                             value={importTargetRepoName}
                             onChange={(e) => setImportTargetRepoName(e.target.value)}
-                            placeholder="напр. ZUGFeRD Premex, Invoicing API, Regression"
+                            placeholder="напр. Payments API, Mobile Checkout, Regression"
                             className="w-full bg-[#12131e] border border-emerald-500/60 focus:border-emerald-400 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                           />
                         </div>

@@ -362,7 +362,33 @@ export const DefectsView: React.FC<DefectsViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-            {filteredDefects.map((def) => {
+            {filteredDefects.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-16 text-center">
+                  <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center text-slate-400 mb-3">
+                      <Bug className="w-6 h-6 text-slate-400" />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                      No defects found
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1 mb-4">
+                      {defects.length === 0
+                        ? 'Your project currently has zero logged defects. Report a bug when an issue is discovered.'
+                        : 'No defects match the current search or filter criteria.'}
+                    </p>
+                    <button
+                      onClick={() => setShowCreateModal(true)}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Report First Defect</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              filteredDefects.map((def) => {
               const { proj, tc } = getTraceabilityInfo(def);
               return (
                 <tr
@@ -473,7 +499,8 @@ export const DefectsView: React.FC<DefectsViewProps> = ({
                   </td>
                 </tr>
               );
-            })}
+            })
+          )}
           </tbody>
         </table>
       </div>

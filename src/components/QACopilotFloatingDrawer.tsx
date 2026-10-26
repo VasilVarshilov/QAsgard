@@ -325,7 +325,7 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
       }));
 
       const contextPayload = {
-        organization: { name: 'FinFlow Technologies' },
+        organization: { name: project.name || 'Workspace' },
         project: { name: project.name, key: project.key, id: project.id },
         activeSuite: activeSuite
           ? { id: activeSuite.id, name: activeSuite.name, description: activeSuite.description }

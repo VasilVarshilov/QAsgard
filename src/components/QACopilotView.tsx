@@ -148,13 +148,12 @@ What would you like to review or generate?`,
       }));
 
       const contextPayload = {
-        organization: { name: 'FinFlow Technologies' },
+        organization: { name: project.name || 'Workspace' },
         project: { name: project.name, key: project.key, id: project.id },
         activeSuite: activeSuite
           ? { id: activeSuite.id, name: activeSuite.name, description: activeSuite.description }
           : null,
-        activeRequirement:
-          'PCI-DSS v4.0 Tokenization & 3D Secure 2.0 Strong Customer Authentication Policy',
+        activeRequirement: activeSuite?.description || '',
         totalCases: testCases.length,
         suitesCount: testSuites.length,
         defectsCount: defects.length,
