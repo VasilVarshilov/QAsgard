@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Organization, User, UserRole, QACopilotPreferences } from '../types';
+import { getUserEmoji, TEAM_EMOJIS } from '../utils/userUtils';
 
 interface UserManagementViewProps {
   organization: Organization;
@@ -48,21 +49,22 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [inviteName, setInviteName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('qa_engineer');
+  const [inviteAvatar, setInviteAvatar] = useState('👩‍💻');
 
   const handleInvite = () => {
     if (!inviteName.trim() || !inviteEmail.trim()) return;
     onInviteUser({
-      name: inviteName,
-      email: inviteEmail,
+      name: inviteName.trim(),
+      email: inviteEmail.trim(),
       role: inviteRole,
-      avatar:
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+      avatar: inviteAvatar,
       organizationId: organization.id,
       status: 'active',
     });
     setShowInviteModal(false);
     setInviteName('');
     setInviteEmail('');
+    setInviteAvatar('👩‍💻');
   };
 
   const permissionsMatrix = [
@@ -224,11 +226,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                 className="p-4 flex items-center justify-between gap-4 text-xs hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
               >
                 <div className="flex items-center space-x-3 truncate">
-                  <img
-                    src={u.avatar}
-                    alt={u.name}
-                    className="w-9 h-9 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                  />
+                  <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-lg shrink-0 select-none shadow-xs">
+                    {getUserEmoji(u.avatar, u.role)}
+                  </div>
                   <div className="truncate">
                     <div className="font-semibold text-slate-900 dark:text-white">{u.name}</div>
                     <div className="text-slate-400 dark:text-slate-400 text-[11px] font-mono">
@@ -427,6 +427,29 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               </select>
             </div>
 
+            <div>
+              <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1.5 flex items-center justify-between">
+                <span>Avatar Emoji *</span>
+                <span className="text-base">{inviteAvatar}</span>
+              </label>
+              <div className="grid grid-cols-8 gap-1.5 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 max-h-36 overflow-y-auto">
+                {TEAM_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setInviteAvatar(emoji)}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-lg transition-transform cursor-pointer hover:scale-115 ${
+                      inviteAvatar === emoji
+                        ? 'bg-indigo-600 text-white ring-2 ring-indigo-400 scale-105'
+                        : 'hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
@@ -464,11 +487,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
             </div>
 
             <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center gap-3">
-              <img
-                src={userToDelete.avatar}
-                alt={userToDelete.name}
-                className="w-8 h-8 rounded-full object-cover"
-              />
+              <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm shrink-0 select-none">
+                {getUserEmoji(userToDelete.avatar, userToDelete.role)}
+              </div>
               <div className="truncate">
                 <div className="font-semibold text-slate-900 dark:text-white">
                   {userToDelete.name}

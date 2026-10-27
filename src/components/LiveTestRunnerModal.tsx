@@ -24,10 +24,12 @@ import {
   Eye,
   Download,
   Plus,
+  Image as ImageIcon,
 } from 'lucide-react';
 import {
   TestRun,
   TestCase,
+  TestSuite,
   TestExecution,
   ExecutionStatus,
   Defect,
@@ -36,11 +38,12 @@ import {
   User,
   TestSeverity,
 } from '../types';
-import { exportTestRunAsPdf } from '../utils/exportUtils';
+import { exportTestRunAsPdf, sortTestCasesTreeOrder } from '../utils/exportUtils';
 
 interface LiveTestRunnerModalProps {
   run: TestRun;
   testCases: TestCase[];
+  testSuites?: TestSuite[];
   onClose: () => void;
   onUpdateExecution: (runId: string, execution: TestExecution) => void;
   onFileDefect: (defect: Partial<Defect>) => void;
@@ -53,6 +56,7 @@ interface LiveTestRunnerModalProps {
 export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   run,
   testCases,
+  testSuites,
   onClose,
   onUpdateExecution,
   onFileDefect,
@@ -61,26 +65,25 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   currentUser,
   defects,
 }) => {
-  // Sort executions in true repository tree order (from first case to last case)
+  // Sort executions strictly in true repository tree order
+  const treeOrderedCases = useMemo(() => {
+    return testSuites && testSuites.length > 0
+      ? sortTestCasesTreeOrder(testCases, testSuites)
+      : testCases;
+  }, [testCases, testSuites]);
+
   const sortedExecutions = useMemo(() => {
     return [...run.executions].sort((a, b) => {
-      const idxA = testCases.findIndex((tc) => tc.id === a.testCaseId);
-      const idxB = testCases.findIndex((tc) => tc.id === b.testCaseId);
+      const idxA = treeOrderedCases.findIndex((tc) => tc.id === a.testCaseId);
+      const idxB = treeOrderedCases.findIndex((tc) => tc.id === b.testCaseId);
       if (idxA !== -1 && idxB !== -1) {
         return idxA - idxB;
       }
-      const matchA =
-        a.testCaseTitle?.match(/(?:TC|tc)[-_#\s]*(\d+)/i) || a.testCaseKey?.match(/\d+$/);
-      const matchB =
-        b.testCaseTitle?.match(/(?:TC|tc)[-_#\s]*(\d+)/i) || b.testCaseKey?.match(/\d+$/);
-      if (matchA && matchB) {
-        const numA = parseInt(matchA[0].match(/\d+/)?.[0] || '0', 10);
-        const numB = parseInt(matchB[0].match(/\d+/)?.[0] || '0', 10);
-        if (numA !== numB) return numA - numB;
-      }
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
       return a.testCaseKey.localeCompare(b.testCaseKey, undefined, { numeric: true });
     });
-  }, [run.executions, testCases]);
+  }, [run.executions, treeOrderedCases]);
 
   // Find current execution index or default to first
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -631,7 +634,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
       openBugsCount: 0,
       updatedAt: new Date().toISOString(),
     };
-    exportTestRunAsPdf(proj, run, testCases, defects);
+    exportTestRunAsPdf(proj, run, testCases, defects, testSuites);
     setToastMessage('PDF report generated and downloaded!');
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -1014,29 +1017,36 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                 )}
 
                                 {/* Step Screenshots & Visual Evidence */}
-                                {stepResult?.attachments && stepResult.attachments.length > 0 && (
-                                  <div className="mt-2 space-y-1">
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                      Step Evidence ({stepResult.attachments.length}):
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 items-center">
-                                      {stepResult.attachments.map((att) => (
-                                        <div
-                                          key={att.id}
-                                          className="relative group border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900 shadow-2xs"
-                                        >
-                                          <img
-                                            src={att.url}
-                                            alt={att.name}
-                                            onClick={() => setSelectedPreviewImage(att.url)}
-                                            className="h-16 w-24 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                            title="Click to view full screenshot"
-                                          />
-                                          <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[9px] text-white px-1.5 py-0.5 truncate flex items-center justify-between">
-                                            <span className="truncate max-w-[55px]">
-                                              {att.name}
-                                            </span>
-                                            <div className="flex items-center gap-1 ml-1">
+                                {(() => {
+                                  const stepAuthorAtts = step.attachments || [];
+                                  const stepExecAtts = stepResult?.attachments || [];
+                                  const totalCount = stepAuthorAtts.length + stepExecAtts.length;
+                                  if (totalCount === 0) return null;
+
+                                  return (
+                                    <div className="mt-2 space-y-1.5">
+                                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <ImageIcon className="w-3 h-3 text-indigo-500" />
+                                        <span>Step Screenshots ({totalCount}):</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 items-center">
+                                        {/* Step Authoring Attachments */}
+                                        {stepAuthorAtts.map((att) => (
+                                          <div
+                                            key={att.id}
+                                            className="relative group border border-indigo-200 dark:border-indigo-800 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900 shadow-2xs"
+                                          >
+                                            <img
+                                              src={att.url}
+                                              alt={att.name}
+                                              onClick={() => setSelectedPreviewImage(att.url)}
+                                              className="h-16 w-24 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                              title="Attached to Step (click to zoom)"
+                                            />
+                                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[9px] text-white px-1.5 py-0.5 truncate flex items-center justify-between">
+                                              <span className="truncate max-w-[65px]" title={att.name}>
+                                                {att.name}
+                                              </span>
                                               <button
                                                 type="button"
                                                 onClick={(e) => {
@@ -1048,32 +1058,71 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                                   a.click();
                                                   document.body.removeChild(a);
                                                 }}
-                                                className="text-slate-300 hover:text-white cursor-pointer"
+                                                className="text-slate-300 hover:text-white cursor-pointer ml-1"
                                                 title="Download screenshot"
                                               >
                                                 <Download className="w-2.5 h-2.5" />
                                               </button>
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleDeleteStepScreenshot(
-                                                    step.stepNumber,
-                                                    att.id
-                                                  );
-                                                }}
-                                                className="text-rose-300 hover:text-rose-100 cursor-pointer"
-                                                title="Remove screenshot"
-                                              >
-                                                <Trash2 className="w-2.5 h-2.5" />
-                                              </button>
                                             </div>
                                           </div>
-                                        </div>
-                                      ))}
+                                        ))}
+
+                                        {/* Step Execution Evidence */}
+                                        {stepExecAtts.map((att) => (
+                                          <div
+                                            key={att.id}
+                                            className="relative group border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900 shadow-2xs"
+                                          >
+                                            <img
+                                              src={att.url}
+                                              alt={att.name}
+                                              onClick={() => setSelectedPreviewImage(att.url)}
+                                              className="h-16 w-24 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                              title="Execution Evidence (click to zoom)"
+                                            />
+                                            <div className="absolute inset-x-0 bottom-0 bg-black/75 text-[9px] text-white px-1.5 py-0.5 truncate flex items-center justify-between">
+                                              <span className="truncate max-w-[55px]" title={att.name}>
+                                                {att.name}
+                                              </span>
+                                              <div className="flex items-center gap-1 ml-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const a = document.createElement('a');
+                                                    a.href = att.url;
+                                                    a.download = att.name;
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                  }}
+                                                  className="text-slate-300 hover:text-white cursor-pointer"
+                                                  title="Download screenshot"
+                                                >
+                                                  <Download className="w-2.5 h-2.5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteStepScreenshot(
+                                                      step.stepNumber,
+                                                      att.id
+                                                    );
+                                                  }}
+                                                  className="text-rose-300 hover:text-rose-100 cursor-pointer"
+                                                  title="Remove screenshot"
+                                                >
+                                                  <Trash2 className="w-2.5 h-2.5" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
                                 {/* Step Defects Badges */}
                                 {stepResult?.defectIds && stepResult.defectIds.length > 0 && (

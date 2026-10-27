@@ -62,6 +62,7 @@ import { useHashLocation } from './hooks/useHashLocation';
 import { CopyProjectModal } from './components/CopyProjectModal';
 import { loadCopilotPreferences, saveCopilotPreferences } from './utils/copilotPreferences';
 import { sortTestCasesChronological, getDescendantSuiteIds } from './utils/exportUtils';
+import { getUserEmoji } from './utils/userUtils';
 import { browserDb } from './services/storage/indexedDb';
 import { WorkspaceManagerView } from './components/WorkspaceManagerView';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
@@ -451,7 +452,7 @@ export default function App() {
       // ignore
     }
     if (isDbReady) {
-      browserDb.putMany('users', users).catch(console.error);
+      browserDb.syncCollection('users', users).catch(console.error);
     }
   }, [users, isDbReady]);
 
@@ -1633,10 +1634,18 @@ export default function App() {
         ? currentProject.id
         : projects[0]?.id || '');
 
+    const targetRepoId =
+      s.repositoryId ||
+      (selectedRepositoryId && selectedRepositoryId !== 'all'
+        ? selectedRepositoryId
+        : projectRepositories.find((r) => r.isDefault)?.id || projectRepositories[0]?.id || `repo-${targetProjectId}-default`);
+
     const newSuite: TestSuite = {
       id: `suite-${Date.now()}`,
       projectId: targetProjectId,
+      repositoryId: targetRepoId,
       parentId: s.parentId !== undefined ? s.parentId : null,
+      order: s.order !== undefined ? s.order : Date.now(),
       name: s.name || 'New Suite',
       description: s.description || '',
       caseCount: 0,
@@ -1915,9 +1924,7 @@ export default function App() {
       id: `usr-${Date.now()}`,
       name: u.name || 'New Member',
       email: u.email || 'member@qasgard.io',
-      avatar:
-        u.avatar ||
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+      avatar: u.avatar || getUserEmoji(undefined, u.role),
       role: u.role || 'qa_engineer',
       organizationId: currentOrg.id,
       status: 'active',
@@ -1926,14 +1933,24 @@ export default function App() {
   };
 
   const handleDeleteUser = (userId: string) => {
-    setUsers((prev) => {
-      const next = prev.filter((u) => u.id !== userId);
-      return next.length > 0 ? next : prev;
-    });
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    if (isDbReady) {
+      browserDb.delete('users', userId).catch(console.error);
+    }
     if (currentUser.id === userId) {
       const remaining = users.filter((u) => u.id !== userId);
       if (remaining.length > 0) {
         setCurrentUser(remaining[0]);
+      } else {
+        setCurrentUser({
+          id: 'usr-admin',
+          name: 'Workspace Admin',
+          email: 'admin@qasgard.io',
+          avatar: '👑',
+          role: 'admin',
+          organizationId: currentOrg.id,
+          status: 'active',
+        });
       }
     }
   };
@@ -1943,8 +1960,8 @@ export default function App() {
     setCurrentUser({
       id: 'usr-admin',
       name: 'Workspace Admin',
-      email: 'admin@qasgard.local',
-      avatar: '',
+      email: 'admin@qasgard.io',
+      avatar: '👑',
       role: 'admin',
       organizationId: currentOrg.id,
       status: 'active',
@@ -1953,6 +1970,9 @@ export default function App() {
       localStorage.setItem('qasgard_users', JSON.stringify([]));
     } catch {
       // ignore
+    }
+    if (isDbReady) {
+      browserDb.syncCollection('users', []).catch(console.error);
     }
   };
 
@@ -2157,6 +2177,7 @@ export default function App() {
         <LiveTestRunnerModal
           run={activeRunningRun}
           testCases={activeTestCases}
+          testSuites={activeTestSuites}
           project={currentProject}
           onClose={() => setActiveRunningRunId(null)}
           onUpdateExecution={handleUpdateExecution}

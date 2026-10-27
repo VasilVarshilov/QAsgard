@@ -154,6 +154,7 @@ export interface TestSuite {
   projectId: string;
   repositoryId?: string;
   parentId?: string | null;
+  order?: number;
   name: string;
   description?: string;
   preconditions?: string;

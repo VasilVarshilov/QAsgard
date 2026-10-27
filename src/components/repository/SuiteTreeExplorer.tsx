@@ -16,6 +16,8 @@ import {
   FileText,
   ChevronsDownUp,
   ChevronsUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { TestSuite, TestCase } from '../../types';
 import { getTestCasesForSuite } from '../../utils/exportUtils';
@@ -41,6 +43,7 @@ interface SuiteTreeExplorerProps {
   onDeleteSuite?: (suiteId: string) => void;
   onMoveSuite: (sourceId: string, targetParentId: string | null) => void;
   onMoveCasesToSuite: (caseIds: string[], targetSuiteId: string) => void;
+  onReorderSuite?: (suiteId: string, direction: 'up' | 'down') => void;
 }
 
 export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
@@ -64,12 +67,13 @@ export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
   onDeleteSuite,
   onMoveSuite,
   onMoveCasesToSuite,
+  onReorderSuite,
 }) => {
   const [dragOverSuiteId, setDragOverSuiteId] = useState<string | null>(null);
   const [showRecentSection, setShowRecentSection] = useState(true);
   const [showFavoritesSection, setShowFavoritesSection] = useState(true);
 
-  // Build recursive parent -> children tree
+  // Build recursive parent -> children tree with order sorting
   const { rootSuites, childMap, countMap } = useMemo(() => {
     const roots: TestSuite[] = [];
     const children: Record<string, TestSuite[]> = {};
@@ -89,7 +93,24 @@ export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
       }
     });
 
-    return { rootSuites: roots, childMap: children, countMap: counts };
+    const sortSuitesList = (list: TestSuite[]) => {
+      return [...list].sort((a, b) => {
+        if (typeof a.order === 'number' && typeof b.order === 'number') {
+          return a.order - b.order;
+        }
+        if (typeof a.order === 'number') return -1;
+        if (typeof b.order === 'number') return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+    };
+
+    const sortedRoots = sortSuitesList(roots);
+    const sortedChildren: Record<string, TestSuite[]> = {};
+    Object.keys(children).forEach((k) => {
+      sortedChildren[k] = sortSuitesList(children[k]);
+    });
+
+    return { rootSuites: sortedRoots, childMap: sortedChildren, countMap: counts };
   }, [suites, cases]);
 
   // Favorite Suites List
@@ -364,6 +385,7 @@ export const SuiteTreeExplorer: React.FC<SuiteTreeExplorerProps> = ({
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 dragOverSuiteId={dragOverSuiteId}
+                onReorderSuite={onReorderSuite}
                 level={0}
               />
             ))
@@ -398,6 +420,7 @@ interface TreeNodeProps {
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent, id: string) => void;
   dragOverSuiteId: string | null;
+  onReorderSuite?: (suiteId: string, direction: 'up' | 'down') => void;
   level: number;
 }
 
@@ -422,6 +445,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   onDragLeave,
   onDrop,
   dragOverSuiteId,
+  onReorderSuite,
   level,
 }) => {
   const isSelected = selectedSuiteId === suite.id;

@@ -16,8 +16,7 @@ import {
   Folder,
   Search,
 } from 'lucide-react';
-import { Project, TestRun, TestCase, TestSuite, Defect, TestRepository } from '../types';
-import { exportTestRunAsPdf, sortTestCasesChronological } from '../utils/exportUtils';
+import { exportTestRunAsPdf, sortTestCasesChronological, sortTestCasesTreeOrder } from '../utils/exportUtils';
 
 interface TestRunsViewProps {
   project: Project;
@@ -67,23 +66,30 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
   const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([]);
   const [caseSearchQuery, setCaseSearchQuery] = useState('');
 
-  // Available test cases dynamically filtered by the selected repository
+  const suiteMap = useMemo(() => new Map(testSuites.map((s) => [s.id, s])), [testSuites]);
+
+  const isCaseInRepo = (tc: TestCase, targetRepoId: string): boolean => {
+    if (targetRepoId === 'all') return true;
+    const defaultRepo = repositories.find((r) => r.isDefault) || repositories[0];
+    const caseRepo = tc.repositoryId || suiteMap.get(tc.suiteId)?.repositoryId;
+    if (caseRepo) return caseRepo === targetRepoId;
+    return defaultRepo ? defaultRepo.id === targetRepoId : true;
+  };
+
+  // Available test cases dynamically filtered by the selected repository, preserving tree order
   const availableCasesForRun = useMemo(() => {
     let list = testCases;
     if (project.id !== 'all') {
       list = list.filter((tc) => tc.projectId === project.id);
     }
     if (selectedRunRepoId !== 'all') {
-      const defaultRepo = repositories.find((r) => r.isDefault) || repositories[0];
-      list = list.filter((tc) => {
-        if (tc.repositoryId) {
-          return tc.repositoryId === selectedRunRepoId;
-        }
-        return defaultRepo ? defaultRepo.id === selectedRunRepoId : true;
-      });
+      list = list.filter((tc) => isCaseInRepo(tc, selectedRunRepoId));
     }
-    return sortTestCasesChronological(list);
-  }, [testCases, project.id, selectedRunRepoId, repositories]);
+    const targetSuites = selectedRunRepoId === 'all'
+      ? testSuites
+      : testSuites.filter((s) => (s.repositoryId || repositories[0]?.id) === selectedRunRepoId);
+    return sortTestCasesTreeOrder(list, targetSuites);
+  }, [testCases, project.id, selectedRunRepoId, repositories, testSuites, suiteMap]);
 
   // Handle incoming context menu request (pre-select repo, suite, or test case)
   useEffect(() => {
@@ -94,8 +100,9 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
       }
       if (initialCreateContext.caseId) {
         const targetCase = testCases.find((c) => c.id === initialCreateContext.caseId);
-        if (targetCase?.repositoryId) {
-          setSelectedRunRepoId(targetCase.repositoryId);
+        const targetCaseRepo = targetCase?.repositoryId || (targetCase ? suiteMap.get(targetCase.suiteId)?.repositoryId : undefined);
+        if (targetCaseRepo) {
+          setSelectedRunRepoId(targetCaseRepo);
         }
         setSelectedCaseIds([initialCreateContext.caseId]);
         if (targetCase) {
@@ -104,10 +111,11 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
       } else if (initialCreateContext.suiteId) {
         const suiteCases = testCases.filter((c) => c.suiteId === initialCreateContext.suiteId);
         setSelectedCaseIds(suiteCases.map((c) => c.id));
-        if (suiteCases[0]?.repositoryId) {
-          setSelectedRunRepoId(suiteCases[0].repositoryId);
-        }
         const s = testSuites.find((st) => st.id === initialCreateContext.suiteId);
+        const suiteRepo = s?.repositoryId || suiteCases[0]?.repositoryId;
+        if (suiteRepo) {
+          setSelectedRunRepoId(suiteRepo);
+        }
         if (s) {
           setNewRunTitle(`Suite Run: ${s.name}`);
         }
@@ -117,12 +125,12 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
           setNewRunTitle(`${repo.name} Verification Run`);
         }
         // Auto select all cases belonging to this repo
-        const repoCases = testCases.filter((tc) => (tc.repositoryId || repositories[0]?.id) === initialCreateContext.repoId);
+        const repoCases = testCases.filter((tc) => isCaseInRepo(tc, initialCreateContext.repoId!));
         setSelectedCaseIds(repoCases.map((c) => c.id));
       }
       onClearInitialCreateContext?.();
     }
-  }, [initialCreateContext, testCases, testSuites, repositories, onClearInitialCreateContext]);
+  }, [initialCreateContext, testCases, testSuites, repositories, onClearInitialCreateContext, suiteMap]);
 
   // When opening modal fresh without preselection, default select all cases in available list
   const handleOpenCreateModal = () => {
@@ -141,13 +149,13 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
       newCases = newCases.filter((tc) => tc.projectId === project.id);
     }
     if (newRepoId !== 'all') {
-      const defaultRepo = repositories.find((r) => r.isDefault) || repositories[0];
-      newCases = newCases.filter((tc) => {
-        if (tc.repositoryId) return tc.repositoryId === newRepoId;
-        return defaultRepo ? defaultRepo.id === newRepoId : true;
-      });
+      newCases = newCases.filter((tc) => isCaseInRepo(tc, newRepoId));
     }
-    setSelectedCaseIds(newCases.map((c) => c.id));
+    const targetSuites = newRepoId === 'all'
+      ? testSuites
+      : testSuites.filter((s) => (s.repositoryId || repositories[0]?.id) === newRepoId);
+    const ordered = sortTestCasesTreeOrder(newCases, targetSuites);
+    setSelectedCaseIds(ordered.map((c) => c.id));
   };
 
   // Filtered cases by search query

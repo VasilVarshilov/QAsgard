@@ -49,6 +49,7 @@ import {
   UserRole,
 } from '../types';
 import { getLogoUrl, getIconSvgUrl } from '../utils/logo';
+import { getUserEmoji } from '../utils/userUtils';
 import { PWAInstallButton } from './pwa/PWAInstallButton';
 
 interface NavbarProps {
@@ -282,9 +283,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5 leading-none">
                 <span className="font-extrabold text-slate-900 dark:text-white tracking-tight text-base font-sans">
                   QAsgard
-                </span>
-                <span className="px-1.5 py-0.2 text-[9px] uppercase font-extrabold tracking-wider bg-amber-50 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 rounded-sm border border-amber-200/80 dark:border-amber-800/80">
-                  Realm
                 </span>
               </div>
               <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 tracking-wide mt-0.5">
@@ -787,11 +785,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center space-x-2 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition-colors cursor-pointer"
               title="Switch Persona / Role for testing"
             >
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-7 h-7 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-              />
+              <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-sm shadow-xs shrink-0 select-none">
+                {getUserEmoji(currentUser.avatar, currentUser.role)}
+              </div>
               <div className="hidden lg:flex flex-col items-start text-left">
                 <span className="text-xs font-medium text-slate-800 dark:text-slate-200 leading-tight">
                   {currentUser.name}
@@ -826,11 +822,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                         : ''
                     }`}
                   >
-                    <img
-                      src={u.avatar}
-                      alt={u.name}
-                      className="w-6 h-6 rounded-full object-cover"
-                    />
+                    <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-xs shrink-0 select-none">
+                      {getUserEmoji(u.avatar, u.role)}
+                    </div>
                     <div className="flex-1 truncate">
                       <div className="text-xs text-slate-800 dark:text-slate-200 truncate">
                         {u.name}

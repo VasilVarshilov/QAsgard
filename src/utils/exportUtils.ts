@@ -189,7 +189,85 @@ export function sortTestCasesChronological(cases: TestCase[]): TestCase[] {
 }
 
 /**
- * Export test suite / repository as JSON
+ * Sorts test cases strictly according to the hierarchical suite tree structure of the repository:
+ * 1. Root suites in suite order / natural sort
+ * 2. Child suites recursively under their parent
+ * 3. Cases within each suite in natural chronological / key sort
+ * 4. Any unassigned cases at the end
+ */
+export function sortTestCasesTreeOrder(cases: TestCase[], suites: TestSuite[] = []): TestCase[] {
+  if (!suites || suites.length === 0) {
+    return sortTestCasesChronological(cases);
+  }
+
+  const childMap = new Map<string, TestSuite[]>();
+  const rootSuites: TestSuite[] = [];
+
+  const sortSuitesList = (list: TestSuite[]) => {
+    return [...list].sort((a, b) => {
+      if (typeof a.order === 'number' && typeof b.order === 'number') {
+        return a.order - b.order;
+      }
+      if (typeof a.order === 'number') return -1;
+      if (typeof b.order === 'number') return 1;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  };
+
+  suites.forEach((s) => {
+    if (!s.parentId || !suites.some((other) => other.id === s.parentId)) {
+      rootSuites.push(s);
+    } else {
+      const existing = childMap.get(s.parentId) || [];
+      existing.push(s);
+      childMap.set(s.parentId, existing);
+    }
+  });
+
+  const orderedSuites: TestSuite[] = [];
+  const traverse = (currentSuites: TestSuite[]) => {
+    const sorted = sortSuitesList(currentSuites);
+    for (const s of sorted) {
+      orderedSuites.push(s);
+      const children = childMap.get(s.id);
+      if (children && children.length > 0) {
+        traverse(children);
+      }
+    }
+  };
+  traverse(rootSuites);
+
+  const casesBySuiteId = new Map<string, TestCase[]>();
+  const unassignedCases: TestCase[] = [];
+  const knownSuiteIds = new Set(suites.map((s) => s.id));
+
+  cases.forEach((c) => {
+    if (c.suiteId && knownSuiteIds.has(c.suiteId)) {
+      const list = casesBySuiteId.get(c.suiteId) || [];
+      list.push(c);
+      casesBySuiteId.set(c.suiteId, list);
+    } else {
+      unassignedCases.push(c);
+    }
+  });
+
+  const result: TestCase[] = [];
+  for (const s of orderedSuites) {
+    const suiteCases = casesBySuiteId.get(s.id);
+    if (suiteCases && suiteCases.length > 0) {
+      result.push(...sortTestCasesChronological(suiteCases));
+    }
+  }
+
+  if (unassignedCases.length > 0) {
+    result.push(...sortTestCasesChronological(unassignedCases));
+  }
+
+  return result;
+}
+
+/**
+ * Export test suite / repository as JSON maintaining exact hierarchical tree structure
  */
 export function exportSuiteAsJson(
   project: Project,
@@ -197,7 +275,7 @@ export function exportSuiteAsJson(
   cases: TestCase[],
   suites: TestSuite[] = []
 ): string {
-  const sortedCases = sortTestCasesChronological(cases);
+  const sortedCases = sortTestCasesTreeOrder(cases, suites);
 
   const exportData = {
     title: `${project.name} - Test Specification (${suiteName})`,
@@ -223,15 +301,18 @@ export function exportSuiteAsJson(
       id: s.id,
       name: s.name,
       description: s.description,
+      parentId: s.parentId || null,
+      order: s.order,
       caseCount: getTestCasesForSuite(s.id, suites, sortedCases).length,
     })),
     testCases: sortedCases.map((tc) => ({
       id: tc.id,
       key: tc.key,
+      suiteId: tc.suiteId,
+      suiteName: tc.suiteName,
       title: tc.title,
       description: tc.description,
       preconditions: tc.preconditions,
-      suiteName: tc.suiteName,
       priority: tc.priority,
       severity: tc.severity,
       behavior: tc.behavior,
@@ -246,6 +327,7 @@ export function exportSuiteAsJson(
         action: st.action,
         expectedResult: st.expectedResult,
         data: st.data,
+        attachments: st.attachments || [],
       })),
       createdAt: tc.createdAt,
       updatedAt: tc.updatedAt,
@@ -625,7 +707,8 @@ export function exportTestRunAsPdf(
   project: Project,
   run: TestRun,
   testCases: TestCase[],
-  defects?: Defect[]
+  defects?: Defect[],
+  suites?: TestSuite[]
 ): string {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -636,6 +719,17 @@ export function exportTestRunAsPdf(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   let currentY = 16;
+
+  // Sort executions strictly by tree order
+  const orderedCases = suites && suites.length > 0 ? sortTestCasesTreeOrder(testCases, suites) : testCases;
+  const sortedExecutions = [...run.executions].sort((a, b) => {
+    const idxA = orderedCases.findIndex((c) => c.id === a.testCaseId);
+    const idxB = orderedCases.findIndex((c) => c.id === b.testCaseId);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return (a.testCaseKey || '').localeCompare(b.testCaseKey || '', undefined, { numeric: true });
+  });
 
   // Helper to thoroughly clean out any strange noise like "A4A4", "A 4 A 4", "B 5 A B", "1 J 3", Cyrillic "А4А4", or hex tokens
   const cleanNoteText = (str: string): string => {
@@ -815,7 +909,7 @@ export function exportTestRunAsPdf(
   doc.text('Detailed Test Execution Results', 14, currentY);
   currentY += 4;
 
-  const caseRows = run.executions.map((exec, idx) => {
+  const caseRows = sortedExecutions.map((exec, idx) => {
     const tc = testCases.find((c) => c.id === exec.testCaseId);
     const defectKeys = getExecutionDefectKeys(exec);
     const noteItems: string[] = [];
@@ -930,12 +1024,15 @@ export function exportTestRunAsPdf(
   currentY = (doc as any).lastAutoTable.finalY + 10;
 
   // Step-level Breakdown & Evidence directly under each step:
-  const executionsWithStepsOrEvidence = run.executions.filter((exec) => {
+  const executionsWithStepsOrEvidence = sortedExecutions.filter((exec) => {
+    const tc = testCases.find((c) => c.id === exec.testCaseId);
     const hasStepResults = exec.stepResults && exec.stepResults.length > 0;
+    const hasStepAtts = tc?.steps?.some((s) => s.attachments && s.attachments.length > 0);
     const hasAttachments =
       (exec.attachments && exec.attachments.length > 0) ||
-      exec.stepResults?.some((s) => s.attachments && s.attachments.length > 0);
-    return hasStepResults || hasAttachments;
+      exec.stepResults?.some((s) => s.attachments && s.attachments.length > 0) ||
+      hasStepAtts;
+    return hasStepResults || hasAttachments || (tc?.steps && tc.steps.length > 0);
   });
 
   if (executionsWithStepsOrEvidence.length > 0) {
@@ -1013,7 +1110,10 @@ export function exportTestRunAsPdf(
       for (const step of stepsToRender) {
         const stepRes = exec.stepResults?.find((s) => s.stepNumber === step.stepNumber);
         const stepStatus = stepRes?.status || 'untested';
-        const stepAttachments = stepRes?.attachments || [];
+        const stepAttachments = [
+          ...(step.attachments || []),
+          ...(stepRes?.attachments || []),
+        ];
         const rawStepDefects =
           stepRes?.defectIds || (stepRes?.defectKey ? [stepRes.defectKey] : []);
         const stepComment = cleanNoteText(stepRes?.comment || '');
