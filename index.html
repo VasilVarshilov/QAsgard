@@ -2,6 +2,39 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Suppress benign Vite HMR WebSocket errors in iframe preview
+      (function () {
+        const origError = console.error;
+        console.error = function (...args) {
+          if (
+            args.some(
+              (a) =>
+                (typeof a === 'string' && a.includes('WebSocket closed without opened')) ||
+                (a instanceof Error && a.message.includes('WebSocket closed without opened'))
+            )
+          ) {
+            return;
+          }
+          origError.apply(console, args);
+        };
+        window.addEventListener(
+          'error',
+          function (e) {
+            if (
+              (e.message && e.message.includes('WebSocket')) ||
+              (e.filename && e.filename.includes('@vite/client')) ||
+              (e.error && e.error.message && e.error.message.includes('WebSocket'))
+            ) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              return true;
+            }
+          },
+          true
+        );
+      })();
+    </script>
     <meta name="theme-color" content="#4f46e5" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
