@@ -66,11 +66,17 @@ async function callGeminiWithResilience(params: GeminiCallParams): Promise<{ tex
         config.temperature = params.temperature;
       }
 
-      const response = await ai.models.generateContent({
+      const generateCall = ai.models.generateContent({
         model,
         contents: params.contents,
         config,
       });
+
+      const timeoutCall = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Gemini API request timeout (3500ms)')), 3500)
+      );
+
+      const response = await Promise.race([generateCall, timeoutCall]);
 
       const text = response.text || '';
       if (text.trim()) {

@@ -573,6 +573,33 @@ const TreeNode: React.FC<TreeNodeProps> = ({
         {/* Right side: Quick Actions and Count */}
         <div className="flex items-center gap-1 shrink-0">
           <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+            {onReorderSuite && (
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReorderSuite(suite.id, 'up');
+                  }}
+                  className="p-0.5 hover:bg-[#25283c] hover:text-white text-slate-400 rounded transition-colors cursor-pointer"
+                  title={`Move suite "${suite.name}" up`}
+                >
+                  <ArrowUp className="w-3 h-3 text-slate-300 hover:text-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onReorderSuite(suite.id, 'down');
+                  }}
+                  className="p-0.5 hover:bg-[#25283c] hover:text-white text-slate-400 rounded transition-colors cursor-pointer"
+                  title={`Move suite "${suite.name}" down`}
+                >
+                  <ArrowDown className="w-3 h-3 text-slate-300 hover:text-white" />
+                </button>
+              </div>
+            )}
+
             {hasChildren && onCollapseChildren && isExpanded && (
               <button
                 type="button"
@@ -689,6 +716,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
               onDragLeave={onDragLeave}
               onDrop={onDrop}
               dragOverSuiteId={dragOverSuiteId}
+              onReorderSuite={onReorderSuite}
               level={level + 1}
             />
           ))}

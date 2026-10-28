@@ -16,6 +16,7 @@ import {
   Folder,
   Search,
 } from 'lucide-react';
+import { Project, TestRun, TestCase, TestSuite, Defect, TestRepository } from '../types';
 import { exportTestRunAsPdf, sortTestCasesChronological, sortTestCasesTreeOrder } from '../utils/exportUtils';
 
 interface TestRunsViewProps {

@@ -407,15 +407,17 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const projectCases = useMemo(() => {
     let cases = isAllProjects ? testCases : testCases.filter((tc) => tc.projectId === project.id);
     if (!isAllProjects && selectedRepositoryId && selectedRepositoryId !== 'all') {
+      const suiteMap = new Map(testSuites.map((s) => [s.id, s]));
       cases = cases.filter((c) => {
-        if (!c.repositoryId) {
+        const repoId = c.repositoryId || suiteMap.get(c.suiteId)?.repositoryId;
+        if (!repoId) {
           return activeRepository?.isDefault || selectedRepositoryId === defaultRepoId;
         }
-        return c.repositoryId === selectedRepositoryId;
+        return repoId === selectedRepositoryId;
       });
     }
     return cases;
-  }, [testCases, project.id, isAllProjects, selectedRepositoryId, activeRepository, defaultRepoId]);
+  }, [testCases, testSuites, project.id, isAllProjects, selectedRepositoryId, activeRepository, defaultRepoId]);
 
   const projectSuites = useMemo(() => {
     let suites = isAllProjects ? testSuites : testSuites.filter((s) => s.projectId === project.id);
@@ -730,12 +732,54 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
 
   // Duplicate Suite
   const handleDuplicateSuite = (suite: TestSuite) => {
+    const targetRepoId =
+      suite.repositoryId ||
+      (selectedRepositoryId && selectedRepositoryId !== 'all'
+        ? selectedRepositoryId
+        : activeRepository?.id || defaultRepoId);
     onAddSuite({
       name: `${suite.name} (Copy)`,
       description: suite.description,
       parentId: suite.parentId,
       projectId: project.id,
+      repositoryId: targetRepoId,
       caseCount: 0,
+      order: Date.now(),
+    });
+  };
+
+  // Reorder suite up / down within sibling suites
+  const handleReorderSuite = (suiteId: string, direction: 'up' | 'down') => {
+    if (!onUpdateSuite) return;
+    const target = projectSuites.find((s) => s.id === suiteId);
+    if (!target) return;
+
+    // Siblings share the exact same parentId
+    const siblings = projectSuites
+      .filter((s) => (s.parentId || null) === (target.parentId || null))
+      .sort((a, b) => {
+        if (typeof a.order === 'number' && typeof b.order === 'number') return a.order - b.order;
+        if (typeof a.order === 'number') return -1;
+        if (typeof b.order === 'number') return 1;
+        return (a.name || '').localeCompare(b.name || '');
+      });
+
+    const index = siblings.findIndex((s) => s.id === suiteId);
+    if (index === -1) return;
+
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= siblings.length) return;
+
+    const reordered = [...siblings];
+    const temp = reordered[index];
+    reordered[index] = reordered[swapIndex];
+    reordered[swapIndex] = temp;
+
+    reordered.forEach((suite, idx) => {
+      onUpdateSuite({
+        ...suite,
+        order: (idx + 1) * 10,
+      });
     });
   };
 
@@ -874,13 +918,18 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   // Save Suite
   const handleSaveSuite = () => {
     if (!newSuiteName.trim()) return;
+    const targetRepoId =
+      selectedRepositoryId && selectedRepositoryId !== 'all'
+        ? selectedRepositoryId
+        : activeRepository?.id || defaultRepoId;
     onAddSuite({
       name: newSuiteName.trim(),
       description: newSuiteDesc.trim(),
       parentId: newSuiteParentId,
       projectId: project.id,
-      repositoryId: activeRepository?.id || defaultRepoId,
+      repositoryId: targetRepoId,
       caseCount: 0,
+      order: Date.now(),
     });
     if (newSuiteParentId) {
       setExpandedSuiteIds((prev) => new Set([...prev, newSuiteParentId]));
@@ -1621,6 +1670,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
               }}
               onMoveSuite={handleMoveSuite}
               onMoveCasesToSuite={handleMoveCasesToSuite}
+              onReorderSuite={handleReorderSuite}
             />
           </div>
 
