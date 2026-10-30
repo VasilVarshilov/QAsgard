@@ -51,6 +51,7 @@ export const QACopilotView: React.FC<QACopilotViewProps> = ({
 }) => {
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash');
   const [selectedSuiteId, setSelectedSuiteId] = useState<string>('all');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('all');
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -64,15 +65,13 @@ export const QACopilotView: React.FC<QACopilotViewProps> = ({
 
 I have synchronized with **${project.name}** (${project.key}):
 - **Repository Scope**: ${testCases.length} active test cases across ${testSuites.length} test suites.
-- **Coverage Baseline**: PCI-DSS v4.0 Tokenization, 3DS 2.0 Strong Customer Authentication, and Idempotency protocols.
 - **Defects Monitored**: ${defects.length} logged defects.
 
 ### How I Can Assist You Right Now:
+- **Focus on a Specific Test Case**: Select a case from the dropdown above to audit steps, generate negative/boundary tests, or produce copy-paste ready automation scripts.
 - **Chat with Test Suite**: Ask questions about test distribution, coverage blind spots, or edge cases.
 - **Smart QA Review**: Submit any test case or procedure for a 5-point quality audit (What is good, missing, improvable, additional tests, and risks).
-- **Generate Test Cases**: Provide a user story or checklist to produce complete test cases with measurable expected results.
-- **Negative & Boundary Scenarios**: Uncover fault-injection, timeout, and authorization failure tests.
-- **Automation Prioritization**: Receive ranked ROI recommendations for Playwright and API suites.
+- **Generate Test Cases**: Provide a user story or checklist to produce complete test cases with measurable expected results in clean Markdown tables.
 
 What would you like to review or generate?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -93,38 +92,100 @@ What would you like to review or generate?`,
   const activeSuite =
     selectedSuiteId === 'all' ? null : testSuites.find((s) => s.id === selectedSuiteId);
 
-  // Quick Prompt Chips
-  const quickPrompts = [
-    {
-      label: 'Generate Negative Tests',
-      prompt:
-        'Generate 3 mission-critical negative and boundary test cases for this suite with measurable expected results.',
-    },
-    {
-      label: 'Smart QA Review',
-      prompt:
-        'Perform a comprehensive 5-point QA review on the active test suite: What is good? What is missing? What should be improved? Additional tests recommended? Remaining risks?',
-    },
-    {
-      label: 'What Should be Automated First?',
-      prompt:
-        'Analyze all test cases in this project and recommend top automation candidates ranked by ROI, regression frequency, and business value.',
-    },
-    {
-      label: 'Coverage & Missing Scenarios',
-      prompt:
-        'Which functional scenarios, negative flows, or edge cases are currently missing from this test suite?',
-    },
-    {
-      label: 'Build Smoke Suite',
-      prompt: 'Build an optimized 5-case Smoke Test pack for release gatekeeper validation.',
-    },
-    {
-      label: 'Generate Test Data',
-      prompt:
-        'Generate realistic test datasets (valid and boundary values) for payment checkout simulation.',
-    },
-  ];
+  const availableCases = React.useMemo(() => {
+    if (selectedSuiteId === 'all') return testCases;
+    return testCases.filter((tc) => tc.suiteId === selectedSuiteId);
+  }, [testCases, selectedSuiteId]);
+
+  const activeCase = React.useMemo(() => {
+    if (selectedCaseId === 'all') return null;
+    return testCases.find((tc) => tc.id === selectedCaseId || tc.key === selectedCaseId) || null;
+  }, [testCases, selectedCaseId]);
+
+  const handleSuiteChange = (suiteId: string) => {
+    setSelectedSuiteId(suiteId);
+    if (selectedCaseId !== 'all') {
+      const match = (suiteId === 'all' ? testCases : testCases.filter((c) => c.suiteId === suiteId))
+        .find((c) => c.id === selectedCaseId || c.key === selectedCaseId);
+      if (!match) setSelectedCaseId('all');
+    }
+  };
+
+  // Dynamic Context-Aware Quick Prompt Chips
+  const quickPrompts = React.useMemo(() => {
+    if (activeCase) {
+      return [
+        {
+          label: `Negative Tests for [${activeCase.key}]`,
+          prompt: `Generate 3 mission-critical negative and boundary test cases specifically for [${activeCase.key}] "${activeCase.title}". Include step-by-step actions and measurable expected results in a clear copy-paste ready Markdown table.`,
+        },
+        {
+          label: `Audit Steps & Preconditions`,
+          prompt: `Perform a detailed QA audit on test case [${activeCase.key}] "${activeCase.title}". Review preconditions, step assertions, and missing edge cases. Provide the improved version in a copy-paste ready format with a clean steps table.`,
+        },
+        {
+          label: `Automated Playwright Script`,
+          prompt: `Write a clean TypeScript Playwright test script for [${activeCase.key}] "${activeCase.title}". Include locators, wait strategies, and assertions for all step expected results.`,
+        },
+        {
+          label: `Boundary & Edge Test Data`,
+          prompt: `Generate realistic boundary test values, edge cases, and injection inputs specifically for [${activeCase.key}] "${activeCase.title}".`,
+        },
+        {
+          label: `Security & Abuse Scenarios`,
+          prompt: `Identify authorization, input validation, and abuse test scenarios for [${activeCase.key}] "${activeCase.title}".`,
+        },
+      ];
+    }
+
+    if (activeSuite) {
+      return [
+        {
+          label: `Negative Tests for ${activeSuite.name}`,
+          prompt: `Generate 3 mission-critical negative and boundary test cases for suite "${activeSuite.name}" with measurable expected results in a clear Markdown table.`,
+        },
+        {
+          label: `Audit Suite Coverage`,
+          prompt: `Perform a comprehensive 5-point QA review on suite "${activeSuite.name}": What is good? What is missing? What should be improved? Additional tests recommended?`,
+        },
+        {
+          label: `Automation Priority for Suite`,
+          prompt: `Analyze the test cases in suite "${activeSuite.name}" and recommend which should be automated first ranked by ROI and regression frequency.`,
+        },
+        {
+          label: `Build Smoke Pack`,
+          prompt: `Build an optimized Smoke Test pack for suite "${activeSuite.name}" with copy-paste ready test cases.`,
+        },
+      ];
+    }
+
+    return [
+      {
+        label: 'Generate Negative Tests',
+        prompt:
+          'Generate 3 mission-critical negative and boundary test cases for this repository with measurable expected results in a copy-paste ready Markdown table.',
+      },
+      {
+        label: 'Smart QA Review',
+        prompt:
+          'Perform a comprehensive 5-point QA review on the active test repository: What is good? What is missing? What should be improved? Additional tests recommended?',
+      },
+      {
+        label: 'What Should be Automated First?',
+        prompt:
+          'Analyze all test cases in this project and recommend top automation candidates ranked by ROI, regression frequency, and business value.',
+      },
+      {
+        label: 'Coverage & Missing Scenarios',
+        prompt:
+          'Which functional scenarios, negative flows, or edge cases are currently missing from this project?',
+      },
+      {
+        label: 'Build Smoke Suite',
+        prompt: 'Build an optimized 5-case Smoke Test pack for release gatekeeper validation in a clear table format.',
+      },
+    ];
+  }, [activeCase, activeSuite]);
 
   const handleSendMessage = async (promptToSend?: string) => {
     const text = promptToSend || inputPrompt;
@@ -152,6 +213,20 @@ What would you like to review or generate?`,
         project: { name: project.name, key: project.key, id: project.id },
         activeSuite: activeSuite
           ? { id: activeSuite.id, name: activeSuite.name, description: activeSuite.description }
+          : null,
+        activeCase: activeCase
+          ? {
+              id: activeCase.id,
+              key: activeCase.key,
+              title: activeCase.title,
+              description: activeCase.description,
+              preconditions: activeCase.preconditions,
+              steps: activeCase.steps,
+              priority: activeCase.priority,
+              severity: activeCase.severity,
+              layer: activeCase.layer,
+              suiteName: activeCase.suiteName,
+            }
           : null,
         activeRequirement: activeSuite?.description || '',
         totalCases: testCases.length,
@@ -252,17 +327,18 @@ What would you like to review or generate?`,
           </div>
         </div>
 
-        {/* Model & Suite Context Selectors */}
-        <div className="flex items-center gap-2.5 flex-wrap text-xs">
+        {/* Model, Suite & Case Context Selectors */}
+        <div className="flex items-center gap-2 flex-wrap text-xs">
           {/* Active Suite Context */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-            <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <select
               value={selectedSuiteId}
-              onChange={(e) => setSelectedSuiteId(e.target.value)}
-              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
+              onChange={(e) => handleSuiteChange(e.target.value)}
+              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer max-w-[150px] truncate"
+              title="Select Suite Context"
             >
-              <option value="all">All Suites ({testCases.length} Cases)</option>
+              <option value="all">All Suites ({testCases.length})</option>
               {testSuites.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} ({testCases.filter((c) => c.suiteId === s.id).length})
@@ -271,9 +347,27 @@ What would you like to review or generate?`,
             </select>
           </div>
 
+          {/* Active Case Context */}
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 max-w-[240px]">
+            <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <select
+              value={selectedCaseId}
+              onChange={(e) => setSelectedCaseId(e.target.value)}
+              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer truncate w-full text-xs"
+              title="Select Specific Test Case in Scope"
+            >
+              <option value="all">All Cases in Suite</option>
+              {availableCases.map((tc) => (
+                <option key={tc.id} value={tc.id}>
+                  [{tc.key}] {tc.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Model Selector */}
           <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
-            <Cpu className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <Cpu className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
@@ -357,9 +451,34 @@ What would you like to review or generate?`,
                   </div>
 
                   {/* Body Content */}
-                  <div className="whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed">
+                  <div className="whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed overflow-x-auto">
                     {msg.text}
                   </div>
+
+                  {isModel && (
+                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(msg.text, msg.id)}
+                        className="px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                        title="Copy response to clipboard"
+                      >
+                        {copiedId === msg.id ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                              Copied to Clipboard!
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3 text-indigo-500" />
+                            <span>Copy for Direct Paste</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -407,7 +526,11 @@ What would you like to review or generate?`,
               value={inputPrompt}
               onChange={(e) => setInputPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Ask QA Copilot about ${activeSuite ? activeSuite.name : 'any test suite, requirement, or execution'}... (Shift+Enter for newline)`}
+              placeholder={
+                activeCase
+                  ? `Ask QA Copilot specifically about [${activeCase.key}] ${activeCase.title}... (Shift+Enter for newline)`
+                  : `Ask QA Copilot about ${activeSuite ? activeSuite.name : 'any test suite, requirement, or execution'}... (Shift+Enter for newline)`
+              }
               rows={2}
               className="flex-1 bg-transparent text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none resize-none px-2 py-1 max-h-32"
             />

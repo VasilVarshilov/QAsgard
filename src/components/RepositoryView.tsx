@@ -63,6 +63,7 @@ import {
   exportSuiteAsCsv,
   exportSuiteAsMarkdown,
   exportRepositoryAsJson,
+  exportProjectAsJson,
   exportSingleTestCase,
   getTestCasesForSuite,
   getDescendantSuiteIds,
@@ -108,9 +109,14 @@ interface RepositoryViewProps {
   onDeleteRepository?: (repoId: string, purgeData?: boolean) => void;
   onImportRepository?: (
     imported: {
+      type?: string;
       project?: Partial<Project>;
+      repositories?: Partial<TestRepository>[];
       suites?: Partial<TestSuite>[];
       testCases?: Partial<TestCase>[];
+      testRuns?: any[];
+      defects?: any[];
+      requirements?: any[];
     },
     mode: 'new' | 'new_repo' | 'merge',
     targetRepoName?: string
@@ -232,9 +238,14 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const [showImportRepoModal, setShowImportRepoModal] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [importParsedData, setImportParsedData] = useState<{
+    type?: string;
     project?: Partial<Project>;
+    repositories?: Partial<TestRepository>[];
     suites?: Partial<TestSuite>[];
     testCases?: Partial<TestCase>[];
+    testRuns?: any[];
+    defects?: any[];
+    requirements?: any[];
   } | null>(null);
   const [importTargetRepoName, setImportTargetRepoName] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
@@ -243,6 +254,20 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const handleExportRepository = () => {
     const filename = exportRepositoryAsJson(project, projectSuites, projectCases);
     setExportSuccessMessage(`Repository exported: ${filename}`);
+    setTimeout(() => setExportSuccessMessage(null), 3500);
+    setShowExportModal(false);
+  };
+
+  const handleExportProject = (targetProject?: Project) => {
+    const p = targetProject || project;
+    const pRepos = (repositories || []).filter((r) => r.projectId === p.id);
+    const pSuites = (testSuites || []).filter((s) => s.projectId === p.id);
+    const pCases = (testCases || []).filter((c) => c.projectId === p.id);
+    const pRuns = (testRuns || []).filter((r) => r.projectId === p.id);
+    const pDefects = (defects || []).filter((d) => d.projectId === p.id);
+    const pReqs = (requirements || []).filter((rq) => rq.projectId === p.id);
+    const filename = exportProjectAsJson(p, pRepos, pSuites, pCases, pRuns, pDefects, pReqs);
+    setExportSuccessMessage(`Project exported: ${filename}`);
     setTimeout(() => setExportSuccessMessage(null), 3500);
     setShowExportModal(false);
   };
@@ -259,6 +284,10 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
         let projectInfo: Partial<Project> = {};
         let suitesList: Partial<TestSuite>[] = [];
         let casesList: Partial<TestCase>[] = [];
+        let reposList: Partial<TestRepository>[] = [];
+        let runsList: any[] = [];
+        let defectsList: any[] = [];
+        let reqsList: any[] = [];
 
         if (parsed.project) {
           projectInfo = parsed.project;
@@ -278,18 +307,50 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           casesList = parsed;
         }
 
-        if (suitesList.length === 0 && casesList.length === 0) {
-          setImportError('No test suites or test cases found in this JSON file.');
+        if (Array.isArray(parsed.repositories)) {
+          reposList = parsed.repositories;
+        }
+
+        if (Array.isArray(parsed.testRuns)) {
+          runsList = parsed.testRuns;
+        }
+
+        if (Array.isArray(parsed.defects)) {
+          defectsList = parsed.defects;
+        }
+
+        if (Array.isArray(parsed.requirements)) {
+          reqsList = parsed.requirements;
+        }
+
+        if (suitesList.length === 0 && casesList.length === 0 && reposList.length === 0) {
+          setImportError('No test suites, test cases, or repositories found in this JSON file.');
           setImportParsedData(null);
           return;
         }
 
+        const isFullProject =
+          parsed.type === 'qasgard_project_export' ||
+          reposList.length > 0 ||
+          runsList.length > 0 ||
+          defectsList.length > 0;
+
         setImportParsedData({
+          type: parsed.type || (isFullProject ? 'qasgard_project_export' : undefined),
           project: projectInfo,
+          repositories: reposList.length > 0 ? reposList : undefined,
           suites: suitesList,
           testCases: casesList,
+          testRuns: runsList.length > 0 ? runsList : undefined,
+          defects: defectsList.length > 0 ? defectsList : undefined,
+          requirements: reqsList.length > 0 ? reqsList : undefined,
         });
-        setImportMode('new_repo');
+
+        if (isFullProject) {
+          setImportMode('new');
+        } else {
+          setImportMode('new_repo');
+        }
         setImportTargetRepoName(projectInfo.name || 'Imported Repository');
       } catch (err: any) {
         setImportError(`Invalid JSON format: ${err.message}`);
@@ -2820,6 +2881,20 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5">
                     {p.id === project.id && <Check className="w-4 h-4 text-indigo-400" />}
+                    {p.id !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowProjectSelectorModal(false);
+                          handleExportProject(p);
+                        }}
+                        className="p-1 hover:bg-[#262838] text-slate-400 hover:text-emerald-400 rounded transition-colors cursor-pointer"
+                        title={`Export Full Backup for ${p.name} / Експорт на цял проект`}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     {onRequestEditProject && p.id !== 'all' && (
                       <button
                         type="button"
@@ -2867,20 +2942,33 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
               ))}
             </div>
 
-            {onOpenCreateProject && (
-              <div className="pt-2 border-t border-[#262838]">
+            <div className="pt-2 border-t border-[#262838] flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProjectSelectorModal(false);
+                  setShowImportRepoModal(true);
+                  setImportMode('new');
+                }}
+                className="flex-1 py-2 bg-[#202234] hover:bg-[#282a3e] border border-[#2e3146] text-slate-300 hover:text-white rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors text-xs"
+              >
+                <Upload className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Import Project</span>
+              </button>
+              {onOpenCreateProject && (
                 <button
+                  type="button"
                   onClick={() => {
                     setShowProjectSelectorModal(false);
                     onOpenCreateProject();
                   }}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm text-xs"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Create New Project</span>
+                  <span>+ Create Project</span>
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -3054,12 +3142,32 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                     </span>
                   </div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    Re-importable
+                    Active Repo
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 leading-tight">
-                  Exports entire repository structure (all suites, hierarchy, test cases, steps,
-                  preconditions, severity, priority, tags) into a standardized JSON file.
+                  Exports active repository structure ({activeRepository?.name || 'Main'}) into a standardized JSON file.
+                </p>
+              </button>
+
+              {/* Complete Project Backup Card */}
+              <button
+                onClick={() => handleExportProject()}
+                className="col-span-2 p-3 bg-gradient-to-r from-purple-950/30 via-indigo-950/30 to-[#1e1f2e] hover:from-purple-900/40 hover:to-[#25283c] border border-purple-500/40 hover:border-purple-400 rounded-xl text-left transition-all cursor-pointer group shadow-xs"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <Download className="w-4 h-4 text-purple-400" />
+                    <span className="font-bold text-white group-hover:text-purple-300">
+                      Full Project Backup (.json) / Експорт на цял Проект
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    All Repos + Runs
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Exports entire project ({project.name}): all {repositories.filter(r => r.projectId === project.id).length || 1} repositories, suites, cases, test runs, defects, and requirements for full disaster recovery / migration.
                 </p>
               </button>
             </div>
@@ -3161,15 +3269,19 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
               {importParsedData && (
                 <div className="space-y-3 p-3.5 bg-[#141522] border border-[#2e3146] rounded-xl">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-white">Repository Preview:</span>
+                    <span className="font-semibold text-white">
+                      {importParsedData.type === 'qasgard_project_export' || (importParsedData.repositories && importParsedData.repositories.length > 0)
+                        ? 'Project Backup Preview:'
+                        : 'Repository Preview:'}
+                    </span>
                     <span className="px-2 py-0.5 text-[10px] font-mono bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
-                      Valid Backup
+                      {importParsedData.type === 'qasgard_project_export' ? 'Full Project Backup' : 'Repository Backup'}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
                     <div className="p-2 bg-[#1b1c2b] rounded-lg">
-                      <span className="text-slate-400 block text-[10px]">Source Project Name</span>
+                      <span className="text-slate-400 block text-[10px]">Source Project</span>
                       <span className="font-semibold text-white truncate block">
                         {importParsedData.project?.name || 'Unnamed Project'}
                       </span>
@@ -3178,6 +3290,12 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                       <span className="text-slate-400 block text-[10px]">Source Key</span>
                       <span className="font-mono font-bold text-indigo-400 block">
                         {importParsedData.project?.key || 'AUTO'}
+                      </span>
+                    </div>
+                    <div className="p-2 bg-[#1b1c2b] rounded-lg">
+                      <span className="text-slate-400 block text-[10px]">Repositories</span>
+                      <span className="font-semibold text-purple-400 block">
+                        {importParsedData.repositories?.length || 1} repos
                       </span>
                     </div>
                     <div className="p-2 bg-[#1b1c2b] rounded-lg">
@@ -3192,6 +3310,22 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
                         {importParsedData.testCases?.length || 0} test cases
                       </span>
                     </div>
+                    {importParsedData.testRuns && importParsedData.testRuns.length > 0 && (
+                      <div className="p-2 bg-[#1b1c2b] rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Test Runs</span>
+                        <span className="font-semibold text-amber-400 block">
+                          {importParsedData.testRuns.length} runs
+                        </span>
+                      </div>
+                    )}
+                    {importParsedData.defects && importParsedData.defects.length > 0 && (
+                      <div className="p-2 bg-[#1b1c2b] rounded-lg">
+                        <span className="text-slate-400 block text-[10px]">Defects</span>
+                        <span className="font-semibold text-rose-400 block">
+                          {importParsedData.defects.length} defects
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Target Project Indicator */}

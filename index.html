@@ -5,27 +5,60 @@
     <script>
       // Suppress benign Vite HMR WebSocket errors in iframe preview
       (function () {
+        function isViteWsError(str) {
+          if (!str) return false;
+          const s = String(str);
+          return (
+            s.includes('WebSocket closed without opened') ||
+            s.includes('@vite/client') ||
+            s.includes('[vite] connecting...') ||
+            s.includes('failed to connect to websocket') ||
+            (s.includes('[vite]') && s.includes('WebSocket'))
+          );
+        }
+
+        function shouldSuppress(args) {
+          return args.some(function (a) {
+            if (!a) return false;
+            if (isViteWsError(a)) return true;
+            if (a.message && isViteWsError(a.message)) return true;
+            if (a.stack && isViteWsError(a.stack)) return true;
+            return false;
+          });
+        }
+
         const origError = console.error;
         console.error = function (...args) {
-          if (
-            args.some(
-              (a) =>
-                (typeof a === 'string' && a.includes('WebSocket closed without opened')) ||
-                (a instanceof Error && a.message.includes('WebSocket closed without opened'))
-            )
-          ) {
-            return;
-          }
+          if (shouldSuppress(args)) return;
           origError.apply(console, args);
         };
+
+        const origWarn = console.warn;
+        console.warn = function (...args) {
+          if (shouldSuppress(args)) return;
+          origWarn.apply(console, args);
+        };
+
         window.addEventListener(
           'error',
           function (e) {
-            if (
-              (e.message && e.message.includes('WebSocket')) ||
-              (e.filename && e.filename.includes('@vite/client')) ||
-              (e.error && e.error.message && e.error.message.includes('WebSocket'))
-            ) {
+            const msg = (e && (e.message || (e.error && e.error.message) || (e.error && e.error.stack))) || '';
+            const file = (e && e.filename) || '';
+            if (isViteWsError(msg) || isViteWsError(file)) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              return true;
+            }
+          },
+          true
+        );
+
+        window.addEventListener(
+          'unhandledrejection',
+          function (e) {
+            const reason = e && e.reason;
+            const msg = (reason && (reason.message || reason.stack || String(reason))) || '';
+            if (isViteWsError(msg)) {
               e.preventDefault();
               e.stopImmediatePropagation();
               return true;

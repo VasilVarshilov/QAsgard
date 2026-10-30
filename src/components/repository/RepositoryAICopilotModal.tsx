@@ -12,6 +12,10 @@ import {
   ArrowRight,
   Database,
   Search,
+  Trash2,
+  PlusCircle,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { TestSuite, TestCase, Project, Requirement } from '../../types';
 
@@ -48,6 +52,7 @@ export const RepositoryAICopilotModal: React.FC<RepositoryAICopilotModalProps> =
   const [caseCount, setCaseCount] = useState<number>(5);
   const [isLoading, setIsLoading] = useState(false);
   const [generatedResults, setGeneratedResults] = useState<Partial<TestCase>[]>([]);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
   const [analysisText, setAnalysisText] = useState<string>('');
 
   const suiteContextName = selectedSuite?.name || 'All Repository Suites';
@@ -55,6 +60,7 @@ export const RepositoryAICopilotModal: React.FC<RepositoryAICopilotModalProps> =
   const handleGenerate = async () => {
     setIsLoading(true);
     setGeneratedResults([]);
+    setSelectedCaseIds(new Set());
     setAnalysisText('');
 
     try {
@@ -117,7 +123,9 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
 
       for (let i = 1; i <= Math.min(caseCount, 10); i++) {
         const randNum = Math.floor(100 + Math.random() * 899);
+        const uniqueId = `ai-gen-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`;
         synthesized.push({
+          id: uniqueId,
           key: `${prefix}-${randNum}`,
           title:
             promptMode === 'negative_tests'
@@ -158,6 +166,7 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
       }
 
       setGeneratedResults(synthesized);
+      setSelectedCaseIds(new Set(synthesized.map((c) => c.id!)));
     } catch (e) {
       console.error(e);
       setAnalysisText('QA Copilot completed repository analysis using local quality model.');
@@ -166,9 +175,53 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
     }
   };
 
+  const handleToggleSelectCase = (id: string) => {
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedCaseIds.size === generatedResults.length) {
+      setSelectedCaseIds(new Set());
+    } else {
+      setSelectedCaseIds(new Set(generatedResults.map((c) => c.id!).filter(Boolean)));
+    }
+  };
+
+  const handleDeleteSingleCase = (id: string) => {
+    setGeneratedResults((prev) => prev.filter((c) => c.id !== id));
+    setSelectedCaseIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleImportSingleCase = (caseItem: Partial<TestCase>) => {
+    onImportGeneratedCases([caseItem]);
+    if (caseItem.id) {
+      handleDeleteSingleCase(caseItem.id);
+    }
+  };
+
+  const handleImportSelected = () => {
+    const toImport = generatedResults.filter((c) => c.id && selectedCaseIds.has(c.id));
+    if (toImport.length > 0) {
+      onImportGeneratedCases(toImport);
+      setGeneratedResults((prev) => prev.filter((c) => !c.id || !selectedCaseIds.has(c.id)));
+      setSelectedCaseIds(new Set());
+    }
+  };
+
   const handleImportAll = () => {
     if (generatedResults.length > 0) {
       onImportGeneratedCases(generatedResults);
+      setGeneratedResults([]);
+      setSelectedCaseIds(new Set());
       onClose();
     }
   };
@@ -283,35 +336,117 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
           )}
 
           {!isLoading && generatedResults.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-white px-1">
-                <span>{generatedResults.length} Test Cases Generated</span>
-                <button
-                  onClick={handleImportAll}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Import All to Suite</span>
-                </button>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold text-white px-1 bg-[#1a1c2b] p-2 rounded-xl border border-[#2e3146] flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white select-none">
+                    <input
+                      type="checkbox"
+                      checked={generatedResults.length > 0 && selectedCaseIds.size === generatedResults.length}
+                      onChange={handleToggleSelectAll}
+                      className="rounded border-[#3a3d54] bg-[#12131f] text-indigo-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Select All ({selectedCaseIds.size}/{generatedResults.length})</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleImportSelected}
+                    disabled={selectedCaseIds.size === 0}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                    title="Import only selected test cases into suite"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Import Selected ({selectedCaseIds.size})</span>
+                  </button>
+
+                  <button
+                    onClick={handleImportAll}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                    title="Import all generated test cases into suite"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Import All ({generatedResults.length})</span>
+                  </button>
+                </div>
               </div>
 
-              {generatedResults.map((tc, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 bg-[#1e1f2e] border border-[#2d3044] rounded-xl space-y-1 text-xs"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-indigo-400">{tc.key}</span>
-                      <span className="font-semibold text-white">{tc.title}</span>
+              {generatedResults.map((tc, idx) => {
+                const caseId = tc.id || `ai-gen-${idx}`;
+                const isSelected = selectedCaseIds.has(caseId);
+                return (
+                  <div
+                    key={caseId}
+                    className={`p-3 rounded-xl border space-y-2 text-xs transition-all ${
+                      isSelected
+                        ? 'bg-[#1e1f30] border-indigo-500/60 shadow-xs'
+                        : 'bg-[#171825] border-[#292c3e] hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectCase(caseId)}
+                          className="mt-0.5 rounded border-[#3a3d54] bg-[#12131f] text-indigo-600 focus:ring-0 cursor-pointer shrink-0"
+                        />
+                        <div className="space-y-0.5 flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono font-bold text-indigo-400 shrink-0">{tc.key}</span>
+                            <span className="font-semibold text-white truncate">{tc.title}</span>
+                          </div>
+                          <p className="text-slate-400 text-[11px] leading-relaxed">{tc.description}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded">
+                          {tc.priority}
+                        </span>
+
+                        {/* Import single case button */}
+                        <button
+                          type="button"
+                          onClick={() => handleImportSingleCase(tc)}
+                          className="px-2 py-1 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                          title="Import only this test case to suite"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Import</span>
+                        </button>
+
+                        {/* Delete single case button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSingleCase(caseId)}
+                          className="p-1 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                          title="Delete this generated test case from list"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded">
-                      {tc.priority}
-                    </span>
+
+                    {/* Quick Step assertions preview */}
+                    {tc.steps && tc.steps.length > 0 && (
+                      <div className="pl-6 pt-1 text-[11px] space-y-1 text-slate-400 border-t border-[#25283c]">
+                        {tc.steps.slice(0, 2).map((st, sIdx) => (
+                          <div key={sIdx} className="truncate">
+                            <span className="text-indigo-400 font-mono font-bold">{st.stepNumber}.</span> {st.action} &rarr; <span className="text-emerald-400">{st.expectedResult}</span>
+                          </div>
+                        ))}
+                        {tc.steps.length > 2 && (
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            + {tc.steps.length - 2} more verification steps...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-slate-400 text-[11px]">{tc.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

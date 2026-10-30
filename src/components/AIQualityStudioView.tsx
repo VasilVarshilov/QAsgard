@@ -13,6 +13,8 @@ import {
   ShieldAlert,
   Terminal,
   Zap,
+  Trash2,
+  Plus,
 } from 'lucide-react';
 import { Project, TestCase, TestSuite } from '../types';
 
@@ -149,8 +151,88 @@ export const AIQualityStudioView: React.FC<AIQualityStudioViewProps> = ({
       };
     });
     onImportGeneratedCases(toImport);
-    alert(`Successfully imported ${toImport.length} test cases into ${project.name} repository!`);
     setGeneratedCases([]);
+    setSelectedGenIndices([]);
+  };
+
+  const handleImportAll = () => {
+    const toImport = generatedCases.map((c) => {
+      const suiteMatch =
+        testSuites.find((s) => s.name.toLowerCase() === (c.suiteName || '').toLowerCase()) ||
+        testSuites[0];
+      return {
+        key: `${project.key}-${Math.floor(200 + Math.random() * 800)}`,
+        projectId: project.id,
+        suiteId: suiteMatch ? suiteMatch.id : 'suite-1',
+        suiteName: suiteMatch ? suiteMatch.name : c.suiteName || 'General',
+        title: c.title,
+        description: c.description || '',
+        type: (c.type || 'functional') as any,
+        priority: (c.priority || 'high') as any,
+        severity: (c.severity || 'critical') as any,
+        layer: (c.layer || 'e2e') as any,
+        status: 'actual' as const,
+        automationStatus: 'to_be_automated' as const,
+        preconditions: c.preconditions || '',
+        steps: (c.steps || []).map((s: any, sIdx: number) => ({
+          stepNumber: sIdx + 1,
+          action: s.action,
+          expectedResult: s.expectedResult,
+          data: s.data || '',
+        })),
+        tags: c.tags || ['ai-generated', 'prd-verified'],
+        attachments: [],
+        comments: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    onImportGeneratedCases(toImport);
+    setGeneratedCases([]);
+    setSelectedGenIndices([]);
+  };
+
+  const handleDeleteCase = (idxToDelete: number) => {
+    setGeneratedCases((prev) => prev.filter((_, idx) => idx !== idxToDelete));
+    setSelectedGenIndices((prev) =>
+      prev
+        .filter((i) => i !== idxToDelete)
+        .map((i) => (i > idxToDelete ? i - 1 : i))
+    );
+  };
+
+  const handleImportSingle = (c: any, idx: number) => {
+    const suiteMatch =
+      testSuites.find((s) => s.name.toLowerCase() === (c.suiteName || '').toLowerCase()) ||
+      testSuites[0];
+    const singleCase = {
+      key: `${project.key}-${Math.floor(200 + Math.random() * 800)}`,
+      projectId: project.id,
+      suiteId: suiteMatch ? suiteMatch.id : 'suite-1',
+      suiteName: suiteMatch ? suiteMatch.name : c.suiteName || 'General',
+      title: c.title,
+      description: c.description || '',
+      type: (c.type || 'functional') as any,
+      priority: (c.priority || 'high') as any,
+      severity: (c.severity || 'critical') as any,
+      layer: (c.layer || 'e2e') as any,
+      status: 'actual' as const,
+      automationStatus: 'to_be_automated' as const,
+      preconditions: c.preconditions || '',
+      steps: (c.steps || []).map((s: any, sIdx: number) => ({
+        stepNumber: sIdx + 1,
+        action: s.action,
+        expectedResult: s.expectedResult,
+        data: s.data || '',
+      })),
+      tags: c.tags || ['ai-generated', 'prd-verified'],
+      attachments: [],
+      comments: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    onImportGeneratedCases([singleCase]);
+    handleDeleteCase(idx);
   };
 
   // Action: Generate Steps
@@ -388,7 +470,7 @@ export const AIQualityStudioView: React.FC<AIQualityStudioViewProps> = ({
 
           {/* Generated Cases Preview Panel */}
           <div className="lg:col-span-7 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <FileCheck2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <h3 className="text-sm font-bold text-slate-800 dark:text-white">
@@ -396,13 +478,38 @@ export const AIQualityStudioView: React.FC<AIQualityStudioViewProps> = ({
                 </h3>
               </div>
               {generatedCases.length > 0 && (
-                <button
-                  onClick={handleImportSelected}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  Import ({selectedGenIndices.length}) to Repository
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedGenIndices.length === generatedCases.length) {
+                        setSelectedGenIndices([]);
+                      } else {
+                        setSelectedGenIndices(generatedCases.map((_, i) => i));
+                      }
+                    }}
+                    className="px-2.5 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-medium cursor-pointer transition-colors"
+                  >
+                    {selectedGenIndices.length === generatedCases.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportSelected}
+                    disabled={selectedGenIndices.length === 0}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    Import Selected ({selectedGenIndices.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleImportAll}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-2xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    Import All ({generatedCases.length})
+                  </button>
+                </div>
               )}
             </div>
 
@@ -453,13 +560,30 @@ export const AIQualityStudioView: React.FC<AIQualityStudioViewProps> = ({
                             </div>
                           </div>
                         </label>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                             {c.layer || 'e2e'}
                           </span>
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">
                             {c.severity || 'critical'}
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => handleImportSingle(c, idx)}
+                            title="Import this test case only"
+                            className="px-2 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 rounded flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Import</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCase(idx)}
+                            title="Delete this test case"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 

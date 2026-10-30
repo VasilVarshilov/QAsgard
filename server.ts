@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
+process.env.DISABLE_HMR = 'true';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -564,6 +565,42 @@ app.post('/api/ai/qa-copilot-chat', async (req, res) => {
 
   const latestUserMsg = messages[messages.length - 1]?.text || '';
 
+  const activeCaseInfo = context.activeCase
+    ? `
+ACTIVE TEST CASE IN DIRECT FOCUS:
+- Key: ${context.activeCase.key}
+- Title: ${context.activeCase.title}
+- Description: ${context.activeCase.description || 'None provided'}
+- Preconditions: ${context.activeCase.preconditions || 'None provided'}
+- Priority: ${context.activeCase.priority || 'Medium'} | Severity: ${context.activeCase.severity || 'Normal'}
+- Steps in Scope:
+${(context.activeCase.steps || [])
+  .map(
+    (st: any, i: number) =>
+      `  ${i + 1}. Action: ${st.action} => Expected: ${st.expectedResult} (Data: ${st.data || 'N/A'})`
+  )
+  .join('\n')}
+
+STRICT FOCUS REQUIREMENT:
+The user has explicitly selected the test case above (${context.activeCase.key}: "${context.activeCase.title}").
+Your entire response, test scenarios, gap analysis, automation script, or test data MUST be 100% directly relevant to THIS specific test case and its exact subject domain.
+DO NOT talk about unrelated topics like payment 3DS/OTP unless this test case is specifically about payment 3DS/OTP.
+
+FORMATTING & COPY-PASTE READY REQUIREMENT:
+Provide exceptionally clear, clean, and structured Markdown ready for immediate copy-pasting into test management suites.
+When generating test cases, always follow this structure:
+### [KEY-EXT] Scenario Title
+- **Description**: Concise summary of what is verified
+- **Preconditions**: Required system/user state
+- **Priority**: High/Medium/Low | **Severity**: Critical/Major/Normal | **Type**: Functional/Negative/Boundary
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Action description | Measurable outcome | Concrete input |
+| 2 | Next action | Verification check | Concrete input |
+`
+    : '';
+
   const systemInstruction = `You are QA Copilot, an advanced AI assistant embedded inside the QAsgard AI-First Test Management Platform.
 You are an expert QA Engineer, QA Architect, Test Manager, Business Analyst, Product Owner, and Software Quality Consultant with over 20 years of experience.
 Your purpose is to help users create, improve, analyze, execute, and maintain high-quality test assets.
@@ -575,9 +612,10 @@ Active Test Suite: ${context.activeSuite?.name || 'All Test Suites'}
 Total Cases in Repo: ${context.totalCases || 0}
 Suites in Project: ${context.suitesCount || 0}
 Active Defects: ${context.defectsCount || 0}
+${activeCaseInfo}
 
 Always adhere to ISTQB and IEEE 829/29119 best practices.
-When asked to generate test cases, provide complete, measurable test cases with ID, Title, Preconditions, Priority, Severity, Tags, and step-by-step action tables with measurable expected results.`;
+Provide structured, clean, copy-paste ready answers with Markdown tables where applicable.`;
 
   const contents = messages.map((m: any) => ({
     role: m.role === 'model' || m.role === 'assistant' ? 'model' : 'user',
@@ -1073,81 +1111,213 @@ function generateSmartFailureDiagnosis(
 
 function generateLocalCopilotResponse(query: string, context: any): string {
   const q = query.toLowerCase();
+  const activeCase = context.activeCase;
+  const projectName = context.project?.name || 'Project';
+  const projectKey = context.project?.key || 'PRJ';
 
-  if (q.includes('negative') || q.includes('edge') || q.includes('boundary') || q.includes('3ds') || q.includes('otp')) {
-    return `### QA Copilot: Negative & Edge Case Analysis for 3DS 2.0
+  // 1. If an active test case is selected in the UI dropdown, strictly tailor to it!
+  if (activeCase) {
+    const caseKey = activeCase.key || `${projectKey}-01`;
+    const caseTitle = activeCase.title || 'Selected Test Case';
+    const caseSteps = activeCase.steps || [];
+    const casePrecond = activeCase.preconditions || 'User is logged in with appropriate permissions.';
 
-Based on your active project **"${context.project?.name || 'QAsgard Repository'}"**, here are mission-critical negative and boundary test cases adhering to ISTQB standards:
-
----
-
-#### 1. TEST CASE: Verify 3DS 2.0 challenge abort on 3 consecutive incorrect OTP entries
-- **TITLE**: Transaction Abort on 3 Consecutive Failed OTP Attempts
-- **DESCRIPTION**: Validate that when a customer inputs an invalid SMS OTP three times consecutively, the transaction terminates immediately, the payment authorization token is revoked, and zero funds are captured.
-- **PRECONDITIONS**:
-  - Customer has loaded checkout with cart value >= $100.00
-  - Step-up challenge modal is active on screen
-- **PRIORITY**: High | **SEVERITY**: Blocker | **TAGS**: \`security\`, \`3ds2\`, \`negative\`
-- **STEPS & MEASURABLE EXPECTED RESULTS**:
-  1. **Action**: Enter OTP \`000000\` and click Verify.
-     **Expected Result**: Modal displays red inline warning: *"Invalid authentication code. 2 attempts remaining."* Form remains interactive.
-  2. **Action**: Enter OTP \`111111\` and click Verify.
-     **Expected Result**: Modal displays red inline warning: *"Invalid authentication code. 1 attempt remaining."*
-  3. **Action**: Enter OTP \`222222\` and click Verify.
-     **Expected Result**: Challenge aborts with HTTP 403 Forbidden. Modal closes and checkout presents error banner: *"Transaction locked due to excessive failed attempts. Please use another card."* No charge posted to merchant ledger.
+    if (q.includes('negative') || q.includes('edge') || q.includes('boundary') || q.includes('fail')) {
+      return `### QA Copilot: Negative & Boundary Test Cases for [${caseKey}]
+**Target Subject:** ${caseTitle}  
+**Format:** Copy-Paste Ready Specification
 
 ---
 
-#### 2. TEST CASE: Boundary check at exact threshold of $99.99 vs $100.00
-- **TITLE**: Threshold boundary check ($99.99 frictionless vs $100.00 mandatory 3DS challenge)
-- **DESCRIPTION**: Verify that order totals of $99.99 process through the frictionless flow while exactly $100.00 mandates the 3DS step-up challenge.
-- **PRIORITY**: High | **SEVERITY**: Critical | **TAGS**: \`boundary\`, \`sca\`, \`regression\`
-- **STEPS & MEASURABLE EXPECTED RESULTS**:
-  1. **Action**: Submit authorization payload with cart value $99.99.
-     **Expected Result**: Frictionless bypass; response returns HTTP 200 with status \`"authorized"\` and \`three_ds_status: "not_required"\`.
-  2. **Action**: Submit authorization payload with cart value $100.00.
-     **Expected Result**: Returns HTTP 200 with status \`"requires_action"\` and \`next_action.type: "redirect_to_url"\` for 3DS challenge.
+### [${caseKey}-NEG1] Fault Injection / Network Timeout during "${caseTitle}"
+- **Description**: Verify graceful failure handling and transaction rollback when connection is severed during execution.
+- **Preconditions**: ${casePrecond}
+- **Priority**: High | **Severity**: Critical | **Type**: Negative
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Trigger initial action for ${caseTitle} | Step initiates successfully and shows pending spinner | Standard test payload |
+| 2 | Inject HTTP 504 Gateway Timeout or drop network interface | System catches timeout exception within 5000ms SLA | Mock 504 Timeout |
+| 3 | Observe UI state and ledger/database | Clear warning banner is displayed: "Operation timed out. No changes applied." No corrupted records saved. | UI Assert: Error banner visible |
+| 4 | Click "Retry" button | Operation restarts cleanly without duplicate transaction | Idempotency key verified |
 
 ---
 
-#### 3. TEST CASE: Biometric bank app timeout fallback to SMS OTP
-- **TITLE**: Graceful fallback to SMS OTP upon mobile banking app timeout
-- **DESCRIPTION**: Ensure that when biometric approval is selected and the bank app fails to respond within 60s, customer is offered SMS OTP fallback.
-- **PRIORITY**: High | **SEVERITY**: Major | **TAGS**: \`resilience\`, \`biometric\`, \`fallback\``;
-  }
+### [${caseKey}-NEG2] Invalid Input & Boundary Overflow Validation
+- **Description**: Verify validation guards reject boundary violations, special characters, and oversized inputs for ${caseTitle}.
+- **Preconditions**: ${casePrecond}
+- **Priority**: High | **Severity**: Major | **Type**: Boundary
 
-  if (q.includes('review') || q.includes('check') || q.includes('audit')) {
-    return `### QA Copilot: Test Asset Review & Gap Analysis
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Navigate to ${caseTitle} input forms | Form inputs are ready and interactive | Clean session |
+| 2 | Enter oversized strings, SQL characters (\`' OR 1=1 --\`), and script tags | Inline validation flags inputs immediately before submission | \`<script>alert(1)</script>\` |
+| 3 | Attempt submission | Submit button remains disabled or returns HTTP 422 with validation errors | Invalid payload |
 
-I have audited the active test cases in **${context.project?.name || 'Active Project'}** (${context.activeSuite?.name || 'Selected Suite'}):
+---
+
+### [${caseKey}-NEG3] Concurrent Session / State Conflict
+- **Description**: Verify behavior when two concurrent sessions attempt ${caseTitle} simultaneously.
+- **Preconditions**: Two active browser sessions authenticated to same entity
+- **Priority**: Medium | **Severity**: Major | **Type**: Negative
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Initiate step in Session A | Session A acquires lock | Account A |
+| 2 | Initiate same step simultaneously in Session B | Session B receives 409 Conflict with notice: "Record locked by another session" | Account A (Parallel) |
+| 3 | Refresh Session B | Session B renders updated state committed by Session A | State consistency verified |`;
+    }
+
+    if (q.includes('review') || q.includes('audit') || q.includes('check') || q.includes('improve')) {
+      return `### QA Copilot: 5-Point Quality Audit for [${caseKey}]
+**Subject:** "${caseTitle}"
 
 #### 1. What is Good?
-- **Clear Happy-Path Coverage**: Standard authorization and tokenization flows have well-defined pre-test fixtures and TLS 1.3 verification.
-- **Measurable Assertions**: Most step assertions verify exact HTTP status codes and returned token prefixes.
+- **Scope Focus**: Clear functional journey directly addressing the core business action.
+- **Preconditions**: Well-defined baseline (${casePrecond}).
 
-#### 2. What is Missing?
-- **Asynchronous Timeout Assertions**: No explicit test verifies behavior when the Issuer ACS hangs or responds beyond the 450ms SLA.
-- **Negative Authentication Scenarios**: Need explicit test cases for 3 consecutive failed OTP attempts and transaction abort policies.
+#### 2. What Needs Improvement?
+- **Measurable Step Assertions**: Steps should specify exact UI element selectors or API status codes rather than generic "success" phrases.
+- **Test Data Specification**: Explicit test values (valid vs boundary) should be documented per step.
 
-#### 3. Recommended Actions:
-1. Add boundary test cases for transaction threshold amounts ($99.99 vs $100.00).
-2. Automate the 3DS 2.0 challenge abort test in your Playwright CI pipeline.
-3. Validate zero fund capture when OTP verification fails.`;
+---
+
+### Revised & Copy-Paste Ready Version:
+### [${caseKey}] ${caseTitle} (Refined)
+- **Description**: ${activeCase.description || `Comprehensive verification for ${caseTitle}`}
+- **Preconditions**: ${casePrecond}
+- **Priority**: ${activeCase.priority || 'High'} | **Severity**: ${activeCase.severity || 'Normal'} | **Layer**: ${activeCase.layer || 'e2e'}
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+${caseSteps.length > 0 ? caseSteps.map((st: any, i: number) => `| ${i + 1} | ${st.action || 'Execute step'} | ${st.expectedResult || 'Expected verified'} | ${st.data || 'Default valid'} |`).join('\n') : `| 1 | Navigate to target feature view | Target view mounts with status HTTP 200 | App URL |
+| 2 | Trigger primary action for ${caseTitle} | Confirmation dialog or progress feedback appears | Valid test data |
+| 3 | Confirm and verify outcome | Result renders on screen with success indicator | Verified state |`}
+
+---
+
+#### 3. Recommended Additional Tests:
+1. **Automate in CI**: Implement Playwright/Cypress end-to-end regression test.
+2. **Permission Boundary**: Verify non-authorized users receive 403 Forbidden when attempting this action.`;
+    }
+
+    if (q.includes('playwright') || q.includes('automation') || q.includes('script') || q.includes('code')) {
+      return `### QA Copilot: Playwright Automation Script for [${caseKey}]
+**Test Case:** ${caseTitle}
+
+\`\`\`typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('[${caseKey}] ${caseTitle.replace(/'/g, "\\'")}', () => {
+  test.beforeEach(async ({ page }) => {
+    // Preconditions: ${casePrecond.replace(/'/g, "\\'")}
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+  });
+
+  test('should execute ${caseTitle.replace(/'/g, "\\'")} with positive assertions', async ({ page }) => {
+    // Step 1: Navigate and assert initial state
+    await expect(page.locator('body')).toBeVisible();
+
+    // Step 2: Perform core actions for ${caseTitle}
+    // TODO: Add selectors specific to your application
+    ${caseSteps.map((s: any, idx: number) => `    // Step ${idx + 1}: ${s.action}
+    // Assert: ${s.expectedResult}`).join('\n')}
+
+    // Final Assertion: Verify completion
+    await expect(page).toHaveURL(/.*dashboard|.*success/);
+  });
+});
+\`\`\`
+
+**Copy-Paste Instructions:**
+1. Save inside \`e2e/${caseKey.toLowerCase()}.spec.ts\`.
+2. Run with \`npx playwright test e2e/${caseKey.toLowerCase()}.spec.ts\`.`;
+    }
+
+    if (q.includes('data') || q.includes('values') || q.includes('dataset')) {
+      return `### QA Copilot: Test Data Matrix for [${caseKey}]
+**Target Test Case:** ${caseTitle}
+
+| Scenario | Data Type | Input Value | Expected System Behavior |
+| :--- | :--- | :--- | :--- |
+| **Happy Path** | Valid Standard | Standard verified parameters | 200 OK, full success confirmation |
+| **Boundary Minimum** | Min Length / Value | Minimum allowable boundary | Accepted with warning or clean save |
+| **Boundary Maximum** | Max Length / Value | Maximum character limit (e.g., 255 chars) | Truncation or clean acceptance |
+| **Negative Null** | Empty / Missing | \`""\` or \`null\` | Inline validation: "Field is required" |
+| **Security Injection** | XSS / SQLi | \`'<script>alert("XSS")</script>\` | Sanitized or escaped without DOM execution |
+| **Special Characters** | Unicode & Emojis | \`Тест 123 !@#$%^&*() 🚀\` | Preserved in UTF-8 without question marks |`;
+    }
+
+    // Default response for active case
+    return `### QA Copilot: Analysis for [${caseKey}]
+**Test Case:** ${caseTitle}  
+**Suite:** ${activeCase.suiteName || context.activeSuite?.name || 'Active Suite'}
+
+Here is the current structured specification for this test case:
+
+- **Key**: \`${caseKey}\`
+- **Title**: ${caseTitle}
+- **Preconditions**: ${casePrecond}
+- **Priority**: ${activeCase.priority || 'High'} | **Severity**: ${activeCase.severity || 'Normal'}
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+${caseSteps.length > 0 ? caseSteps.map((st: any, i: number) => `| ${i + 1} | ${st.action} | ${st.expectedResult} | ${st.data || 'N/A'} |`).join('\n') : `| 1 | Trigger action | System completes successfully | Standard data |`}
+
+#### Quick Actions for this Test Case:
+- **"Generate Negative Tests"**: Creates 3 fault-injection and boundary scenarios.
+- **"Audit & Improve Steps"**: Refines preconditions and measurable assertions.
+- **"Automated Playwright Script"**: Generates ready-to-run TypeScript automation code.
+- **"Generate Test Data"**: Creates valid, boundary, and injection datasets.`;
+  }
+
+  // 2. If no specific case is selected, tailor to active suite or whole project
+  const suiteName = context.activeSuite?.name || 'All Test Suites';
+
+  if (q.includes('negative') || q.includes('edge') || q.includes('boundary')) {
+    return `### QA Copilot: Negative & Edge Case Analysis
+**Scope:** ${suiteName} (${projectName})  
+**Format:** Copy-Paste Ready Specification
+
+---
+
+### [${projectKey}-NEG-01] Premature Session Invalidation & Network Loss
+- **Description**: Verify system state consistency when user session expires mid-operation in ${suiteName}.
+- **Preconditions**: User starts an active transaction or form in ${suiteName}
+- **Priority**: High | **Severity**: Critical | **Type**: Negative
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Begin operation in ${suiteName} | Flow initiates and locks active resource | Standard test payload |
+| 2 | Invalidate authentication token or drop network | Next request fails with HTTP 401 or network disconnect | Expired token / Offline |
+| 3 | Attempt submission | User is safely redirected to login with draft state preserved | Form restoration token |
+
+---
+
+### [${projectKey}-NEG-02] Concurrency Conflict & Double Submission
+- **Description**: Verify double-click or parallel submission does not generate duplicate database entities.
+- **Preconditions**: Client ready to submit in ${suiteName}
+- **Priority**: High | **Severity**: Major | **Type**: Negative
+
+| Step # | Action | Expected Result | Test Data |
+| :---: | :--- | :--- | :--- |
+| 1 | Double-click Submit button within 50ms | Button is disabled immediately after first click; idempotency key is transmitted | Rapid double-click |
+| 2 | Verify backend log and database entries | Exactly 1 transaction processed; second request returns HTTP 409 or cached response | Idempotent UUID |`;
   }
 
   return `### QA Copilot
+I am synchronized with **${projectName}** [${projectKey}]:
 
-I am analyzing **${context.project?.name || 'QAsgard Test Repository'}** in real time:
-
-- **Repository Scope**: ${context.totalCases || 14} test cases active across ${context.suitesCount || 6} test suites.
-- **Active Suite**: **${context.activeSuite?.name || 'All Test Suites'}**.
-- **Coverage Status**: Active tracking with real-time test intelligence.
+- **Repository Scope**: ${context.totalCases || 14} test cases across ${context.suitesCount || 6} test suites.
+- **Active Suite**: **${suiteName}**.
+- **Defects Monitored**: ${context.defectsCount || 0} active defects.
 
 #### What would you like to accomplish?
-1. **Generate Test Cases**: Provide a PRD clause or user story, and I will generate complete positive, negative, and boundary tests.
-2. **3DS 2.0 & Payment Specs**: Generate SCA verification, OTP retry abort, and boundary test scenarios.
-3. **Smart QA Review**: Ask me to review any test case or suite for missing preconditions and weak assertions.
-4. **Flakiness Diagnosis**: Paste a failed test stack trace to receive root-cause analysis and bug drafts.`;
+1. **Select a Test Case** in the dropdown above to generate test scripts, negative scenarios, or review steps for that specific test case.
+2. **Generate Test Cases**: Provide a user story or acceptance criteria to produce complete test cases with measurable expected results.
+3. **Smart QA Review**: Ask for a comprehensive 5-point quality audit on your active test suite.
+4. **Automation Strategy**: Ask which test cases to automate first for maximum ROI.`;
 }
 
 // In development, mount Vite middleware. In production, serve dist.

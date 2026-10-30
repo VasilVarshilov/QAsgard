@@ -809,9 +809,14 @@ export default function App() {
   // Import Repository handler (import as a new project, as a new repository in this project, or merge into current repository)
   const handleImportRepository = (
     importedData: {
+      type?: string;
       project?: Partial<Project>;
+      repositories?: Partial<TestRepository>[];
       suites?: Partial<TestSuite>[];
       testCases?: Partial<TestCase>[];
+      testRuns?: any[];
+      defects?: any[];
+      requirements?: any[];
     },
     mode: 'new' | 'new_repo' | 'merge',
     targetRepoName?: string
@@ -828,32 +833,59 @@ export default function App() {
       const newProject: Project = {
         id: newProjectId,
         organizationId: currentOrg.id,
-        name: importedData.project?.name || `Imported Repository (${finalKey})`,
+        name: importedData.project?.name || `Imported Project (${finalKey})`,
         key: finalKey,
         description: importedData.project?.description || 'Imported test repository',
         suiteCount: importedData.suites?.length || 1,
         caseCount: importedData.testCases?.length || 0,
-        openBugsCount: 0,
+        openBugsCount: Array.isArray(importedData.defects) ? importedData.defects.length : 0,
         updatedAt: new Date().toISOString(),
       };
 
-      const newDefaultRepo: TestRepository = {
-        id: `repo-${newProjectId}-default`,
-        projectId: newProjectId,
-        name: 'Main Repository',
-        description: `Default test repository for ${newProject.name}`,
-        isDefault: true,
-        createdAt: new Date().toISOString(),
-      };
+      // Map repositories
+      const repoIdMap = new Map<string, string>();
+      let newRepos: TestRepository[] = [];
+
+      if (Array.isArray(importedData.repositories) && importedData.repositories.length > 0) {
+        newRepos = importedData.repositories.map((r, idx) => {
+          const newRepoId = `repo-${newProjectId}-${idx}`;
+          if (r.id) repoIdMap.set(r.id, newRepoId);
+          return {
+            id: newRepoId,
+            projectId: newProjectId,
+            name: r.name || `Repository ${idx + 1}`,
+            description: r.description || '',
+            isDefault: Boolean(r.isDefault),
+            createdAt: r.createdAt || new Date().toISOString(),
+          };
+        });
+        if (!newRepos.some((r) => r.isDefault)) {
+          newRepos[0].isDefault = true;
+        }
+      } else {
+        const defaultRepo: TestRepository = {
+          id: `repo-${newProjectId}-default`,
+          projectId: newProjectId,
+          name: 'Main Repository',
+          description: `Default test repository for ${newProject.name}`,
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+        };
+        newRepos = [defaultRepo];
+        repoIdMap.set('default', defaultRepo.id);
+      }
+
+      const primaryRepoId = newRepos.find((r) => r.isDefault)?.id || newRepos[0].id;
 
       const suiteIdMap = new Map<string, string>();
       const newSuites: TestSuite[] = (importedData.suites || []).map((s, idx) => {
         const newSuiteId = `suite-${Date.now()}-${idx}`;
         if (s.id) suiteIdMap.set(s.id, newSuiteId);
+        const mappedRepoId = (s.repositoryId && repoIdMap.get(s.repositoryId)) || primaryRepoId;
         return {
           id: newSuiteId,
           projectId: newProjectId,
-          repositoryId: newDefaultRepo.id,
+          repositoryId: mappedRepoId,
           name: s.name || `Suite ${idx + 1}`,
           description: s.description || '',
           parentId: null,
@@ -871,21 +903,25 @@ export default function App() {
         newSuites.push({
           id: `suite-${Date.now()}`,
           projectId: newProjectId,
-          repositoryId: newDefaultRepo.id,
+          repositoryId: primaryRepoId,
           name: `${newProject.name} Core Suite`,
           description: 'Default test suite',
           caseCount: importedData.testCases?.length || 0,
         });
       }
 
+      const caseIdMap = new Map<string, string>();
       const newCases: TestCase[] = (importedData.testCases || []).map((tc, idx) => {
+        const newCaseId = `case-${Date.now()}-${idx}`;
+        if (tc.id) caseIdMap.set(tc.id, newCaseId);
         const mappedSuiteId =
           (tc.suiteId && suiteIdMap.get(tc.suiteId)) || newSuites[0]?.id || 'default';
+        const mappedRepoId = (tc.repositoryId && repoIdMap.get(tc.repositoryId)) || primaryRepoId;
         const targetSuite = newSuites.find((s) => s.id === mappedSuiteId);
         return {
-          id: `case-${Date.now()}-${idx}`,
+          id: newCaseId,
           projectId: newProjectId,
-          repositoryId: newDefaultRepo.id,
+          repositoryId: mappedRepoId,
           key:
             tc.key && !tc.key.includes('-')
               ? `${finalKey}-${tc.key}`
@@ -913,11 +949,100 @@ export default function App() {
         };
       });
 
+      // Restore Test Runs if present
+      const runIdMap = new Map<string, string>();
+      let newRuns: TestRun[] = [];
+      if (Array.isArray(importedData.testRuns) && importedData.testRuns.length > 0) {
+        newRuns = importedData.testRuns.map((tr, idx) => {
+          const newRunId = `run-${Date.now()}-${idx}`;
+          if (tr.id) runIdMap.set(tr.id, newRunId);
+          const executions = Array.isArray(tr.executions)
+            ? tr.executions.map((ex: any) => ({
+                ...ex,
+                id: ex.id || `exec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                runId: newRunId,
+                testCaseId: (ex.testCaseId && caseIdMap.get(ex.testCaseId)) || ex.testCaseId,
+                status: ex.status || 'untested',
+                durationSeconds: ex.durationSeconds || 0,
+                defectIds: Array.isArray(ex.defectIds) ? ex.defectIds : [],
+                stepResults: Array.isArray(ex.stepResults) ? ex.stepResults : [],
+              }))
+            : [];
+          const totalCases = tr.totalCases ?? executions.length;
+          const passedCount = tr.passedCount ?? executions.filter((e: any) => e.status === 'passed').length;
+          const failedCount = tr.failedCount ?? executions.filter((e: any) => e.status === 'failed').length;
+          const blockedCount = tr.blockedCount ?? executions.filter((e: any) => e.status === 'blocked').length;
+          const skippedCount = tr.skippedCount ?? executions.filter((e: any) => e.status === 'skipped').length;
+          const untestedCount = tr.untestedCount ?? (totalCases - passedCount - failedCount - blockedCount - skippedCount);
+
+          return {
+            id: newRunId,
+            key: `${finalKey}-RUN-${idx + 1}`,
+            projectId: newProjectId,
+            title: tr.title || `Test Run ${idx + 1}`,
+            description: tr.description || '',
+            environment: (['Production', 'Staging', 'QA-Develop', 'Local'].includes(tr.environment) ? tr.environment : 'QA-Develop') as 'Production' | 'Staging' | 'QA-Develop' | 'Local',
+            status: (['active', 'completed', 'aborted'].includes(tr.status) ? tr.status : 'completed') as 'active' | 'completed' | 'aborted',
+            assignedTo: tr.assignedTo || currentUser.name,
+            createdAt: tr.createdAt || new Date().toISOString(),
+            completedAt: tr.completedAt,
+            totalCases,
+            passedCount,
+            failedCount,
+            blockedCount,
+            skippedCount,
+            untestedCount: Math.max(0, untestedCount),
+            executions,
+          };
+        });
+      }
+
+      // Restore Defects if present
+      let newDefects: Defect[] = [];
+      if (Array.isArray(importedData.defects) && importedData.defects.length > 0) {
+        newDefects = importedData.defects.map((d, idx) => ({
+          id: `def-${Date.now()}-${idx}`,
+          key: `${finalKey}-BUG-${idx + 1}`,
+          projectId: newProjectId,
+          title: d.title || `Defect ${idx + 1}`,
+          description: d.description || '',
+          severity: d.severity || 'normal',
+          priority: d.priority || 'medium',
+          status: (['open', 'in_progress', 'resolved', 'closed'].includes(d.status) ? d.status : 'open') as DefectStatus,
+          assignee: d.assignee || 'QA Engineer',
+          reporter: d.reporter || currentUser.name || 'System Import',
+          reproductionSteps: Array.isArray(d.reproductionSteps) ? d.reproductionSteps : [],
+          comments: Array.isArray(d.comments) ? d.comments : [],
+          runId: (d.runId && runIdMap.get(d.runId)) || d.runId,
+          testCaseId: (d.testCaseId && caseIdMap.get(d.testCaseId)) || d.testCaseId,
+          createdAt: d.createdAt || new Date().toISOString(),
+          attachments: Array.isArray(d.attachments) ? d.attachments : [],
+        }));
+      }
+
+      // Restore Requirements if present
+      let newReqs: Requirement[] = [];
+      if (Array.isArray(importedData.requirements) && importedData.requirements.length > 0) {
+        newReqs = importedData.requirements.map((req, idx) => ({
+          id: `req-${Date.now()}-${idx}`,
+          key: `${finalKey}-REQ-${idx + 1}`,
+          projectId: newProjectId,
+          title: req.title || `Requirement ${idx + 1}`,
+          description: req.description || '',
+          status: (['active', 'draft', 'deprecated'].includes(req.status) ? req.status : 'active') as 'active' | 'draft' | 'deprecated',
+          testCaseKeys: Array.isArray(req.testCaseKeys) ? req.testCaseKeys : [],
+        }));
+      }
+
       setProjects((prev) => [newProject, ...prev]);
-      setRepositories((prev) => [...prev, newDefaultRepo]);
-      setSelectedRepositoryId(newDefaultRepo.id);
+      setRepositories((prev) => [...prev, ...newRepos]);
+      setSelectedRepositoryId(primaryRepoId);
       setTestSuites((prev) => [...prev, ...newSuites]);
       setTestCases((prev) => [...prev, ...newCases]);
+      if (newRuns.length > 0) setTestRuns((prev) => [...prev, ...newRuns]);
+      if (newDefects.length > 0) setDefects((prev) => [...prev, ...newDefects]);
+      if (newReqs.length > 0) setRequirements((prev) => [...prev, ...newReqs]);
+
       setCurrentProject(newProject);
       setSelectedSuiteId(newSuites[0]?.id || null);
 
@@ -925,6 +1050,9 @@ export default function App() {
         browserDb.put('projects', newProject).catch(console.error);
         browserDb.putMany('suites', newSuites).catch(console.error);
         browserDb.putMany('testCases', newCases).catch(console.error);
+        if (newRuns.length > 0) browserDb.putMany('testRuns', newRuns).catch(console.error);
+        if (newDefects.length > 0) browserDb.putMany('defects', newDefects).catch(console.error);
+        if (newReqs.length > 0) browserDb.putMany('requirements', newReqs).catch(console.error);
       }
     } else if (mode === 'new_repo') {
       // Create as a NEW REPOSITORY within the CURRENT PROJECT

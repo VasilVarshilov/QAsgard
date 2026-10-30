@@ -9,6 +9,8 @@ import {
   Defect,
   TestExecution,
   StepExecutionResult,
+  TestRepository,
+  Requirement,
 } from '../types';
 
 /**
@@ -1166,12 +1168,72 @@ export function exportTestRunAsPdf(
 
         // Step expected result (if provided)
         if (step.expectedResult && step.expectedResult.trim()) {
-          const expLines = doc.splitTextToSize(`Expected: ${step.expectedResult}`, pageWidth - 55);
+          const expLines = doc.splitTextToSize(`Expected Result: ${step.expectedResult}`, pageWidth - 55);
           doc.setFontSize(7.5);
           doc.setFont('helvetica', 'italic');
           doc.setTextColor(100, 116, 139);
           doc.text(expLines, 18, currentY);
           currentY += expLines.length * 3.5 + 2;
+        }
+
+        // REQUIREMENT: Step authoring reference screenshots appear directly under EXPECTED RESULT
+        const authoringAttachments = step.attachments || [];
+        if (authoringAttachments.length > 0) {
+          if (currentY > pageHeight - 55) {
+            doc.addPage();
+            currentY = 20;
+          }
+
+          doc.setFontSize(7.5);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(79, 70, 229); // Indigo
+          doc.text('Expected Step Reference Screenshot(s):', 20, currentY);
+          currentY += 4.5;
+
+          for (const att of authoringAttachments) {
+            if (att.url && att.url.startsWith('data:image')) {
+              try {
+                const format = att.url.includes('image/png') ? 'PNG' : 'JPEG';
+                const props = doc.getImageProperties(att.url);
+                const maxW = 88;
+                const maxH = 46;
+                let renderW = maxW;
+                let renderH = maxH;
+                if (props && props.width > 0 && props.height > 0) {
+                  const naturalAspect = props.width / props.height;
+                  if (naturalAspect >= maxW / maxH) {
+                    renderW = maxW;
+                    renderH = Math.max(12, maxW / naturalAspect);
+                  } else {
+                    renderH = maxH;
+                    renderW = Math.max(12, maxH * naturalAspect);
+                  }
+                }
+
+                if (currentY + renderH + 10 > pageHeight - 15) {
+                  doc.addPage();
+                  currentY = 20;
+                }
+
+                doc.setDrawColor(199, 210, 254);
+                doc.setFillColor(245, 247, 255);
+                doc.roundedRect(20, currentY, renderW + 4, renderH + 4, 1.5, 1.5, 'FD');
+                doc.addImage(att.url, format, 22, currentY + 2, renderW, renderH);
+                currentY += renderH + 5.5;
+
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(100, 116, 139);
+                doc.text(`[Expected] ${att.name || 'expected_reference.png'} (${att.size || 'image'})`, 22, currentY);
+                currentY += 5;
+              } catch {
+                doc.setFontSize(7);
+                doc.setTextColor(100, 116, 139);
+                doc.text(`[Expected Reference] ${att.name}`, 22, currentY);
+                currentY += 4.5;
+              }
+            }
+          }
         }
 
         // Requirement: When step is passed or defect is resolved, do NOT show bug numbers!
@@ -1191,71 +1253,78 @@ export function exportTestRunAsPdf(
           currentY += 1;
         }
 
-        // Step Comment / Observation
+        // Step Actual Observation / Result
         if (stepComment) {
-          const commentLines = doc.splitTextToSize(`Observation: ${stepComment}`, pageWidth - 55);
+          const commentLines = doc.splitTextToSize(`Actual Observation: ${stepComment}`, pageWidth - 55);
           doc.setFontSize(7.5);
           doc.setFont('helvetica', 'normal');
-          doc.setTextColor(71, 85, 105);
+          doc.setTextColor(51, 65, 85);
           doc.text(commentLines, 20, currentY);
           currentY += commentLines.length * 3.5 + 2;
         }
 
-        // REQUIREMENT: Step Execution Evidence & Screenshots on new line under the step
-        // Frame screenshot in card with guaranteed vertical clearance so it NEVER covers step text!
-        if (stepAttachments.length > 0) {
-          if (currentY > pageHeight - 65) {
+        // REQUIREMENT: Run execution evidence screenshots appear directly under ACTUAL RESULT
+        const runExecutionAttachments = stepRes?.attachments || [];
+        if (runExecutionAttachments.length > 0) {
+          if (currentY > pageHeight - 55) {
             doc.addPage();
             currentY = 20;
           }
 
-          currentY += 2;
-          doc.setFontSize(8);
+          doc.setFontSize(7.5);
           doc.setFont('helvetica', 'bold');
-          doc.setTextColor(49, 46, 129); // Indigo
-          doc.text('Step Execution Evidence & Screenshots', 20, currentY);
-          currentY += 5; // Generous clearance after heading before screenshot
+          doc.setTextColor(13, 148, 136); // Teal
+          doc.text('Actual Execution Evidence (Captured during Test Run):', 20, currentY);
+          currentY += 4.5;
 
-          for (const att of stepAttachments) {
-            if (currentY + 58 > pageHeight - 15) {
-              doc.addPage();
-              currentY = 20;
-            }
-
-            try {
-              if (att.url && att.url.startsWith('data:image')) {
+          for (const att of runExecutionAttachments) {
+            if (att.url && att.url.startsWith('data:image')) {
+              try {
                 const format = att.url.includes('image/png') ? 'PNG' : 'JPEG';
-                // Render screenshot card background & border
-                doc.setDrawColor(203, 213, 225);
-                doc.setFillColor(248, 250, 252);
-                doc.roundedRect(20, currentY, 92, 52, 1.5, 1.5, 'FD');
+                const props = doc.getImageProperties(att.url);
+                const maxW = 88;
+                const maxH = 46;
+                let renderW = maxW;
+                let renderH = maxH;
+                if (props && props.width > 0 && props.height > 0) {
+                  const naturalAspect = props.width / props.height;
+                  if (naturalAspect >= maxW / maxH) {
+                    renderW = maxW;
+                    renderH = Math.max(12, maxW / naturalAspect);
+                  } else {
+                    renderH = maxH;
+                    renderW = Math.max(12, maxH * naturalAspect);
+                  }
+                }
 
-                // Render image with exact width 88mm, height 48mm inside card
-                doc.addImage(att.url, format, 22, currentY + 2, 88, 48);
-                currentY += 54; // Advance completely past image and frame
+                if (currentY + renderH + 10 > pageHeight - 15) {
+                  doc.addPage();
+                  currentY = 20;
+                }
+
+                doc.setDrawColor(204, 251, 241);
+                doc.setFillColor(240, 253, 250);
+                doc.roundedRect(20, currentY, renderW + 4, renderH + 4, 1.5, 1.5, 'FD');
+                doc.addImage(att.url, format, 22, currentY + 2, renderW, renderH);
+                currentY += renderH + 5.5;
 
                 doc.setFontSize(7);
                 doc.setFont('helvetica', 'normal');
-                doc.setTextColor(100, 116, 139);
-                doc.text(
-                  `Screenshot: ${att.name || 'step_screenshot.png'} (${att.size || 'image'})`,
-                  22,
-                  currentY
-                );
-                currentY += 6; // Clearance past caption
-              } else {
-                doc.setFontSize(7.5);
-                doc.setFont('helvetica', 'italic');
-                doc.setTextColor(100, 116, 139);
-                doc.text(`Attachment: ${att.name} (${att.size || 'file'})`, 20, currentY);
+                doc.setTextColor(15, 118, 110);
+                doc.text(`[Actual Evidence] ${att.name || 'run_screenshot.png'} (${att.size || 'image'})`, 22, currentY);
                 currentY += 5;
+              } catch {
+                doc.setFontSize(7);
+                doc.setTextColor(100, 116, 139);
+                doc.text(`[Actual Evidence] ${att.name}`, 22, currentY);
+                currentY += 4.5;
               }
-            } catch {
+            } else {
               doc.setFontSize(7.5);
               doc.setFont('helvetica', 'italic');
               doc.setTextColor(100, 116, 139);
-              doc.text(`Attachment: ${att.name}`, 20, currentY);
-              currentY += 5;
+              doc.text(`Attachment: ${att.name} (${att.size || 'file'})`, 20, currentY);
+              currentY += 4.5;
             }
           }
         }
@@ -1354,6 +1423,114 @@ export function exportRepositoryAsJson(
 
   const jsonStr = JSON.stringify(data, null, 2);
   const filename = `${project.key}_repository_export_${new Date().toISOString().slice(0, 10)}.json`;
+  downloadText(jsonStr, filename, 'application/json');
+  return filename;
+}
+
+/**
+ * Export entire project backup as JSON (all repositories, suites, test cases, test runs, defects, requirements)
+ */
+export function exportProjectAsJson(
+  project: Project,
+  repositories: TestRepository[],
+  suites: TestSuite[],
+  cases: TestCase[],
+  testRuns?: TestRun[],
+  defects?: Defect[],
+  requirements?: Requirement[]
+): string {
+  const sortedCases = sortTestCasesChronological(cases);
+  const data = {
+    version: '1.0',
+    type: 'qasgard_project_export',
+    exportedAt: new Date().toISOString(),
+    project: {
+      id: project.id,
+      name: project.name,
+      key: project.key,
+      description: project.description || '',
+      organizationId: project.organizationId,
+      suiteCount: suites.length,
+      caseCount: sortedCases.length,
+      openBugsCount: defects ? defects.filter((d) => d.status === 'open' || d.status === 'in_progress').length : 0,
+    },
+    repositories: (repositories || []).map((r) => ({
+      id: r.id,
+      projectId: r.projectId,
+      name: r.name,
+      description: r.description || '',
+      isDefault: r.isDefault,
+      createdAt: r.createdAt,
+    })),
+    suites: suites.map((s) => ({
+      id: s.id,
+      projectId: s.projectId,
+      repositoryId: s.repositoryId,
+      name: s.name,
+      description: s.description || '',
+      parentId: s.parentId || null,
+      order: s.order,
+      caseCount: getTestCasesForSuite(s.id, suites, sortedCases).length,
+    })),
+    testCases: sortedCases.map((tc) => ({
+      id: tc.id,
+      key: tc.key,
+      projectId: tc.projectId,
+      repositoryId: tc.repositoryId,
+      suiteId: tc.suiteId,
+      suiteName: tc.suiteName,
+      title: tc.title,
+      description: tc.description || '',
+      preconditions: tc.preconditions || '',
+      priority: tc.priority,
+      severity: tc.severity,
+      behavior: tc.behavior,
+      type: tc.type,
+      layer: tc.layer,
+      automationStatus: tc.automationStatus,
+      status: tc.status,
+      tags: tc.tags || [],
+      steps: (tc.steps || []).map((st) => ({
+        stepNumber: st.stepNumber,
+        action: st.action,
+        expectedResult: st.expectedResult,
+        data: st.data || '',
+        attachments: st.attachments || [],
+      })),
+      requirementRefs: tc.requirementRefs || [],
+      attachments: tc.attachments || [],
+      customFields: tc.customFields || [],
+      createdAt: tc.createdAt,
+      updatedAt: tc.updatedAt,
+    })),
+    testRuns: (testRuns || []).map((tr) => ({
+      id: tr.id,
+      key: tr.key,
+      projectId: tr.projectId,
+      title: tr.title,
+      description: tr.description || '',
+      status: tr.status,
+      createdAt: tr.createdAt,
+      executions: tr.executions || [],
+    })),
+    defects: (defects || []).map((d) => ({
+      id: d.id,
+      key: d.key,
+      projectId: d.projectId,
+      title: d.title,
+      description: d.description || '',
+      status: d.status,
+      severity: d.severity,
+      priority: d.priority,
+      runId: d.runId,
+      testCaseId: d.testCaseId,
+      createdAt: d.createdAt,
+    })),
+    requirements: requirements || [],
+  };
+
+  const jsonStr = JSON.stringify(data, null, 2);
+  const filename = `${project.key}_full_project_backup_${new Date().toISOString().slice(0, 10)}.json`;
   downloadText(jsonStr, filename, 'application/json');
   return filename;
 }
