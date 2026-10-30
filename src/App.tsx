@@ -61,7 +61,7 @@ import { EditProjectModal } from './components/EditProjectModal';
 import { useHashLocation } from './hooks/useHashLocation';
 import { CopyProjectModal } from './components/CopyProjectModal';
 import { loadCopilotPreferences, saveCopilotPreferences } from './utils/copilotPreferences';
-import { sortTestCasesChronological, getDescendantSuiteIds } from './utils/exportUtils';
+import { sortTestCasesChronological, getDescendantSuiteIds, exportProjectAsJson } from './utils/exportUtils';
 import { getUserEmoji } from './utils/userUtils';
 import { browserDb } from './services/storage/indexedDb';
 import { WorkspaceManagerView } from './components/WorkspaceManagerView';
@@ -1634,8 +1634,13 @@ export default function App() {
     const parentProj = projects.find((p) => p.id === targetProjectId) || currentProject;
     const projectKeyPrefix = parentProj.id !== ALL_PROJECTS_ID ? parentProj.key : 'TC';
 
+    const uniqueId =
+      tc.id && !testCases.some((c) => c.id === tc.id)
+        ? tc.id
+        : `case-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
     const fullCase: TestCase = {
-      id: `case-${Date.now()}`,
+      id: uniqueId,
       key: tc.key || `${projectKeyPrefix}-${Math.floor(100 + Math.random() * 900)}`,
       projectId: targetProjectId,
       suiteId: tc.suiteId || activeTestSuites[0]?.id || testSuites[0]?.id || 'suite-1',
@@ -2168,6 +2173,15 @@ export default function App() {
             onOpenCreateRepository={() => setIsCreateRepoModalOpen(true)}
             onOpenImportRepository={() => setIsImportRepoModalOpen(true)}
             onOpenCreateProject={() => setIsCreateProjectModalOpen(true)}
+            onExportProject={(p) => {
+              const pRepos = repositories.filter((r) => r.projectId === p.id);
+              const pSuites = testSuites.filter((s) => s.projectId === p.id);
+              const pCases = testCases.filter((c) => c.projectId === p.id);
+              const pRuns = testRuns.filter((r) => r.projectId === p.id);
+              const pDefects = defects.filter((d) => d.projectId === p.id);
+              const pReqs = requirements.filter((rq) => rq.projectId === p.id);
+              exportProjectAsJson(p, pRepos, pSuites, pCases, pRuns, pDefects, pReqs);
+            }}
             projectCount={projects.length}
           />
         )}

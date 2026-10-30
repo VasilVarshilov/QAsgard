@@ -30,6 +30,7 @@ import {
   CopilotDisplayState,
 } from '../types';
 import { clampAndSnapPosition } from '../utils/copilotPreferences';
+import { MarkdownRenderer } from './common/MarkdownRenderer';
 
 interface Message {
   id: string;
@@ -626,8 +627,11 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
                         )}
                       </div>
                     </div>
-
-                    <div className="whitespace-pre-wrap font-sans text-xs">{m.text}</div>
+                    {isModel ? (
+                      <MarkdownRenderer content={m.text} className="text-xs" />
+                    ) : (
+                      <div className="whitespace-pre-wrap font-sans text-xs">{m.text}</div>
+                    )}
                   </div>
                 </div>
               );

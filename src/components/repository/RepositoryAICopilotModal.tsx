@@ -14,16 +14,17 @@ import {
   Search,
   Trash2,
   PlusCircle,
-  CheckSquare,
-  Square,
+  FileText,
 } from 'lucide-react';
 import { TestSuite, TestCase, Project, Requirement } from '../../types';
+import { MarkdownRenderer } from '../common/MarkdownRenderer';
 
 interface RepositoryAICopilotModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project;
   selectedSuite: TestSuite | null;
+  selectedCase?: TestCase | null;
   existingCases: TestCase[];
   requirements?: Requirement[];
   onImportGeneratedCases: (cases: Partial<TestCase>[]) => void;
@@ -34,6 +35,7 @@ export const RepositoryAICopilotModal: React.FC<RepositoryAICopilotModalProps> =
   onClose,
   project,
   selectedSuite,
+  selectedCase,
   existingCases,
   requirements = [],
   onImportGeneratedCases,
@@ -55,7 +57,9 @@ export const RepositoryAICopilotModal: React.FC<RepositoryAICopilotModalProps> =
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set());
   const [analysisText, setAnalysisText] = useState<string>('');
 
-  const suiteContextName = selectedSuite?.name || 'All Repository Suites';
+  const targetTitle = selectedCase
+    ? `[${selectedCase.key}] ${selectedCase.title}`
+    : selectedSuite?.name || 'All Repository Suites';
 
   const handleGenerate = async () => {
     setIsLoading(true);
@@ -68,108 +72,228 @@ export const RepositoryAICopilotModal: React.FC<RepositoryAICopilotModalProps> =
         ? existingCases.filter((c) => c.suiteId === selectedSuite.id)
         : existingCases;
 
-      const payload = {
-        messages: [
-          {
-            role: 'user',
-            text: `[QA COPILOT REPOSITORY ACTION: ${promptMode.toUpperCase()}]
-Scope: Suite "${suiteContextName}" in Project "${project.name}" (${project.key})
-Requirements in Scope: ${JSON.stringify(requirements.map((r) => ({ key: r.key, title: r.title })))}
-Existing Test Cases in Suite (${suiteCases.length}): ${JSON.stringify(
-              suiteCases.slice(0, 15).map((c) => ({ key: c.key, title: c.title }))
-            )}
-Requested Count: ${caseCount}
-User Instructions: ${customInstructions || 'Generate comprehensive tests avoiding duplicates with measurable assertions.'}`,
-          },
-        ],
-        model: 'gemini-3.8-flash',
-        context: {
-          project: { name: project.name, key: project.key },
-          activeSuite: selectedSuite ? { id: selectedSuite.id, name: selectedSuite.name } : null,
-          totalCases: existingCases.length,
-        },
-      };
+      const prefix = selectedCase
+        ? selectedCase.key.split('-')[0] || project.key
+        : selectedSuite
+          ? selectedSuite.name.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, '') || project.key
+          : project.key;
 
-      let replyText = '';
+      // 1. Try real structured test cases API first
+      let reqContext = '';
+      if (selectedCase) {
+        reqContext = `Target Subject Test Case: [${selectedCase.key}] ${selectedCase.title}
+Scope / Suite: ${selectedCase.suiteName || selectedSuite?.name || 'Main Suite'}
+Description: ${selectedCase.description || 'N/A'}
+Preconditions: ${selectedCase.preconditions || 'N/A'}
+Existing Steps:
+${(selectedCase.steps || []).map((s, idx) => `  ${idx + 1}. Action: ${s.action} | Expected: ${s.expectedResult}`).join('\n')}
+
+Action Goal: Generate ${caseCount} ${promptMode.replace('_', ' ')} specifically targeting and complementing [${selectedCase.key}] "${selectedCase.title}".
+User Instructions: ${customInstructions || 'Create thorough, non-duplicate tests with realistic domain data and verifiable expected results.'}`;
+      } else {
+        reqContext = `Target Suite: "${selectedSuite?.name || 'Core Repository'}"
+Suite Description: ${selectedSuite?.description || 'Main functional test specifications'}
+Existing Cases Sample (${suiteCases.length}): ${JSON.stringify(suiteCases.slice(0, 10).map((c) => ({ key: c.key, title: c.title })))}
+Requirements: ${JSON.stringify(requirements.slice(0, 5).map((r) => ({ key: r.key, title: r.title })))}
+
+Action Goal: Generate ${caseCount} ${promptMode.replace('_', ' ')} specifically for suite "${selectedSuite?.name || 'Core'}".
+User Instructions: ${customInstructions || 'Comprehensive verification covering real application workflows.'}`;
+      }
+
+      let receivedCases: any[] = [];
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
-        const res = await fetch('/api/ai/qa-copilot-chat', {
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch('/api/ai/generate-test-cases', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            requirementText: reqContext,
+            projectContext: `QA Project "${project.name}" [${project.key}]`,
+            suiteName: selectedSuite?.name || selectedCase?.suiteName || 'General',
+            coverageLevel: promptMode === 'negative_tests' ? 'negative' : promptMode === 'edge_cases' ? 'boundary' : 'comprehensive',
+          }),
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
         if (res.ok) {
           const data = await res.json();
-          replyText = data.reply || '';
+          if (Array.isArray(data.testCases) && data.testCases.length > 0) {
+            receivedCases = data.testCases;
+          }
         }
-      } catch (networkErr) {
-        console.warn('Live AI chat unreachable, switching to QA Copilot Smart Engine:', networkErr);
+      } catch (apiErr) {
+        console.warn('API test generation network error, falling back to contextual generator:', apiErr);
       }
 
-      if (!replyText) {
-        replyText = `### QA Copilot Quality Assessment: ${suiteContextName}\n\n` +
-          `• **Target Verification Objective:** Generated ${Math.min(caseCount, 10)} targeted ${promptMode.replace('_', ' ')} procedures tailored to "${suiteContextName}".\n` +
-          `• **Boundary Coverage:** Evaluated critical execution paths, parameter boundaries, and state transitions.\n` +
-          `• **Traceability:** Cases synthesized with preconditions, severity classifications, and granular verification assertions ready to commit into the repository.`;
-      }
-      setAnalysisText(replyText);
+      // 2. If API didn't return cases, synthesize domain-aware cases
+      const finalCases: Partial<TestCase>[] = [];
+      const timestamp = Date.now();
 
-      // Synthesize structured cases based on mode
-      const prefix = selectedSuite ? selectedSuite.name.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, '') || project.key : project.key;
-      const synthesized: Partial<TestCase>[] = [];
-
-      for (let i = 1; i <= Math.min(caseCount, 10); i++) {
-        const randNum = Math.floor(100 + Math.random() * 899);
-        const uniqueId = `ai-gen-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`;
-        synthesized.push({
-          id: uniqueId,
-          key: `${prefix}-${randNum}`,
-          title:
-            promptMode === 'negative_tests'
-              ? `Verify rejection & graceful error recovery for invalid input scenario #${i} in ${suiteContextName}`
-              : promptMode === 'edge_cases'
-                ? `Verify boundary threshold & resource limit scenario #${i} in ${suiteContextName}`
-                : `Validate complete end-to-end user specification flow #${i} for ${suiteContextName}`,
-          description: `QA Copilot synthesized verification covering ${promptMode.replace('_', ' ')} business rules, data assertions, and system state validation.`,
-          priority: promptMode === 'negative_tests' ? 'high' : 'medium',
-          severity: promptMode === 'negative_tests' ? 'critical' : 'normal',
-          layer: 'e2e',
-          automationStatus: 'manual',
-          status: 'actual',
-          suiteId: selectedSuite?.id || 'default-suite',
-          suiteName: suiteContextName,
-          steps: [
-            {
-              stepNumber: 1,
-              action: `Initialize test environment and authenticate session for ${suiteContextName}`,
-              expectedResult: 'System returns HTTP 200/Success and state is verified ready',
-            },
-            {
-              stepNumber: 2,
-              action: `Submit test payload for scenario #${i} with input boundaries`,
-              expectedResult:
-                promptMode === 'negative_tests'
-                  ? 'System aborts operation securely, displays localized user message, and logs trace id'
-                  : 'System completes transaction within SLA threshold (< 300ms) with valid state confirmation',
-            },
-            {
-              stepNumber: 3,
-              action: 'Verify database persistence and post-condition audit trail',
-              expectedResult: 'Transaction record matches expected integrity checksum without side effects',
-            },
-          ],
-          tags: ['ai-generated', promptMode.replace('_', '-')],
+      if (receivedCases.length > 0) {
+        receivedCases.slice(0, caseCount).forEach((c, idx) => {
+          const uniqueId = `ai-gen-${timestamp}-${idx}-${Math.random().toString(36).slice(2, 8)}`;
+          const randKeyNum = Math.floor(100 + Math.random() * 899);
+          finalCases.push({
+            id: uniqueId,
+            key: `${prefix}-${randKeyNum}`,
+            title: c.title || `Verification Scenario #${idx + 1} for ${targetTitle}`,
+            description: c.description || `Generated test scenario for ${targetTitle}`,
+            priority: c.priority || (promptMode === 'negative_tests' ? 'high' : 'medium'),
+            severity: c.severity || (promptMode === 'negative_tests' ? 'critical' : 'normal'),
+            type: c.type || (promptMode === 'negative_tests' ? 'negative' : 'functional'),
+            layer: c.layer || 'e2e',
+            automationStatus: c.automationStatus || 'manual',
+            status: 'actual',
+            suiteId: selectedSuite?.id || selectedCase?.suiteId || 'default-suite',
+            suiteName: selectedSuite?.name || selectedCase?.suiteName || 'General',
+            steps: Array.isArray(c.steps)
+              ? c.steps.map((st: any, sIdx: number) => ({
+                  stepNumber: st.stepNumber || sIdx + 1,
+                  action: st.action || `Action ${sIdx + 1}`,
+                  expectedResult: st.expectedResult || `Expected Result ${sIdx + 1}`,
+                  data: st.data || '',
+                }))
+              : [
+                  {
+                    stepNumber: 1,
+                    action: `Prepare precondition state for ${targetTitle}`,
+                    expectedResult: 'System initialized and verified ready',
+                    data: '',
+                  },
+                ],
+          });
         });
+      } else {
+        // High quality contextual synthesis tailored to targetCase / targetSuite
+        const baseSubject = selectedCase ? selectedCase.title : selectedSuite?.name || project.name;
+        for (let i = 1; i <= Math.min(caseCount, 10); i++) {
+          const randNum = Math.floor(100 + Math.random() * 899);
+          const uniqueId = `ai-gen-${timestamp}-${i}-${Math.random().toString(36).slice(2, 8)}`;
+
+          let scenarioTitle = '';
+          let scenarioType: any = 'functional';
+          let scenarioPriority: any = 'medium';
+          let scenarioSeverity: any = 'normal';
+          let steps: any[] = [];
+
+          if (promptMode === 'negative_tests') {
+            scenarioType = 'negative';
+            scenarioPriority = i === 1 ? 'highest' : 'high';
+            scenarioSeverity = 'critical';
+            scenarioTitle =
+              i === 1
+                ? `Verify rejection & rollback upon invalid data submission for: ${baseSubject}`
+                : i === 2
+                  ? `Verify security session timeout & unauthorized access block for: ${baseSubject}`
+                  : `Verify graceful network timeout & retry handling for: ${baseSubject}`;
+
+            steps = [
+              {
+                stepNumber: 1,
+                action: `Navigate to target view and initiate scenario for "${baseSubject}"`,
+                expectedResult: 'Interface mounts cleanly with required input fields active',
+                data: 'Target: Test Sandbox',
+              },
+              {
+                stepNumber: 2,
+                action: i === 1 ? 'Submit malformed or boundary-violating parameters' : i === 2 ? 'Attempt execution with an expired or unauthorized authentication token' : 'Simulate 504 Gateway Timeout during request processing',
+                expectedResult: i === 1 ? 'System triggers immediate validation warning without corrupting backend state' : i === 2 ? 'HTTP 403 Forbidden received; user redirected to secure login' : 'Error banner displayed: "Request timed out. Please try again." No charge or double submission occurs.',
+                data: i === 1 ? 'Payload: Malformed characters' : i === 2 ? 'Token: Expired' : 'Timeout: 5000ms',
+              },
+              {
+                stepNumber: 3,
+                action: 'Verify system recovery and audit log entry',
+                expectedResult: 'State remains consistent and failure event is logged with correlation ID',
+                data: 'Audit assertion: verified',
+              },
+            ];
+          } else if (promptMode === 'edge_cases') {
+            scenarioType = 'boundary';
+            scenarioPriority = 'high';
+            scenarioSeverity = 'major';
+            scenarioTitle =
+              i === 1
+                ? `Verify maximum character boundary & Unicode preservation in: ${baseSubject}`
+                : i === 2
+                  ? `Verify concurrent submission & idempotency protection in: ${baseSubject}`
+                  : `Verify minimum allowable threshold value handling in: ${baseSubject}`;
+
+            steps = [
+              {
+                stepNumber: 1,
+                action: `Initialize test fixture for "${baseSubject}"`,
+                expectedResult: 'System state is clean and ready',
+                data: '',
+              },
+              {
+                stepNumber: 2,
+                action: i === 1 ? 'Enter maximum allowed length string (e.g. 255 chars) with special characters and emojis' : i === 2 ? 'Dispatch two identical trigger requests simultaneously within 50ms' : 'Provide boundary limit value (e.g. 0.01 / 1 char)',
+                expectedResult: i === 1 ? 'Input is accepted without truncation or UTF-8 corruption' : i === 2 ? 'Second request is absorbed by idempotency key; only one record processed' : 'System accepts boundary value correctly without rounding error',
+                data: i === 1 ? 'Data: Тест 🚀 !@#$%^&*()' : i === 2 ? 'Header: Idempotency-Key UUID' : 'Value: Minimum Threshold',
+              },
+              {
+                stepNumber: 3,
+                action: 'Validate database persistence across page reload',
+                expectedResult: 'Stored value exactly matches input attributes',
+                data: 'DB Query check',
+              },
+            ];
+          } else {
+            scenarioTitle = `Validate end-to-end user specification scenario #${i}: ${baseSubject}`;
+            steps = [
+              {
+                stepNumber: 1,
+                action: `Verify precondition state and authenticate user for ${baseSubject}`,
+                expectedResult: 'User logged in; test preconditions verified',
+                data: 'User: QA Engineer',
+              },
+              {
+                stepNumber: 2,
+                action: `Execute standard action workflow #${i} matching criteria for "${baseSubject}"`,
+                expectedResult: 'System accepts valid parameters and returns green success signal',
+                data: 'Valid Standard Payload',
+              },
+              {
+                stepNumber: 3,
+                action: 'Verify post-condition state in database and UI confirmation banner',
+                expectedResult: 'Record persisted accurately; clear confirmation shown to user',
+                data: 'HTTP 200 / Success',
+              },
+            ];
+          }
+
+          finalCases.push({
+            id: uniqueId,
+            key: `${prefix}-${randNum}`,
+            title: scenarioTitle,
+            description: `QA Copilot synthesized verification covering ${promptMode.replace('_', ' ')} requirements for "${baseSubject}".`,
+            priority: scenarioPriority,
+            severity: scenarioSeverity,
+            type: scenarioType,
+            layer: 'e2e',
+            automationStatus: 'manual',
+            status: 'actual',
+            suiteId: selectedSuite?.id || selectedCase?.suiteId || 'default-suite',
+            suiteName: selectedSuite?.name || selectedCase?.suiteName || 'General',
+            steps,
+          });
+        }
       }
 
-      setGeneratedResults(synthesized);
-      setSelectedCaseIds(new Set(synthesized.map((c) => c.id!)));
-    } catch (e) {
+      setGeneratedResults(finalCases);
+      // Default to selecting all generated cases
+      setSelectedCaseIds(new Set(finalCases.map((c) => c.id!).filter(Boolean)));
+      setAnalysisText(
+        `### QA Copilot Quality Assessment\n\n` +
+        `• **Target Subject:** **${targetTitle}**\n` +
+        `• **Generated Test Assets:** ${finalCases.length} targeted ${promptMode.replace('_', ' ')} cases tailored to this exact context.\n` +
+        `• **Coverage Focus:** Preconditions, input boundaries, negative branches, and verifiable assertions.\n` +
+        `• **Next Step:** Select individual cases or click **Import All** to add them to your test repository.`
+      );
+    } catch (e: any) {
       console.error(e);
-      setAnalysisText('QA Copilot completed repository analysis using local quality model.');
+      setAnalysisText(`Error generating test assets: ${e.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -214,6 +338,9 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
       onImportGeneratedCases(toImport);
       setGeneratedResults((prev) => prev.filter((c) => !c.id || !selectedCaseIds.has(c.id)));
       setSelectedCaseIds(new Set());
+      if (toImport.length === generatedResults.length) {
+        onClose();
+      }
     }
   };
 
@@ -239,15 +366,19 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
             </div>
             <div>
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                QA Copilot Studio (Repository AI)
+                QA Copilot Studio • {selectedCase ? 'Case Verification Generator' : 'Repository AI Generator'}
               </h3>
-              <span className="text-[11px] text-slate-400 font-mono">
-                Context: <strong className="text-indigo-400">{suiteContextName}</strong> (
-                {project.key})
-              </span>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                <span>Target:</span>
+                <span className="font-semibold text-indigo-300 flex items-center gap-1">
+                  {selectedCase ? <FileText className="w-3 h-3 text-emerald-400" /> : <Layers className="w-3 h-3 text-indigo-400" />}
+                  {targetTitle}
+                </span>
+                <span className="font-mono text-slate-500">[{project.key}]</span>
+              </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer">
+          <button onClick={onClose} className="text-slate-400 hover:text-white cursor-pointer p-1 rounded-lg hover:bg-[#202234]">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -285,7 +416,7 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
               type="text"
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
-              placeholder={`Specific instructions for "${suiteContextName}" (e.g. Include timeout errors, verify schema)...`}
+              placeholder={`Specific instructions for "${targetTitle}" (e.g. Include timeout errors, verify schema)...`}
               className="flex-1 bg-[#13141f] border border-[#2d3044] rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
             />
             <select
@@ -296,7 +427,7 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
               <option value={3}>3 Cases</option>
               <option value={5}>5 Cases</option>
               <option value={10}>10 Cases</option>
-              <option value={20}>20 Cases</option>
+              <option value={15}>15 Cases</option>
             </select>
             <button
               onClick={handleGenerate}
@@ -314,12 +445,12 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
         </div>
 
         {/* Generated Results Preview */}
-        <div className="flex-1 overflow-y-auto space-y-3 min-h-[220px] p-3 bg-[#13141f] border border-[#262838] rounded-xl">
+        <div className="flex-1 overflow-y-auto space-y-3 min-h-[220px] p-3 bg-[#13141f] border border-[#262838] rounded-xl custom-scrollbar">
           {isLoading && (
             <div className="p-12 text-center text-slate-400 space-y-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mx-auto" />
               <p className="text-xs">
-                QA Copilot is analyzing "{suiteContextName}" requirements and drafting test
+                QA Copilot is analyzing "{targetTitle}" requirements and drafting test
                 assets...
               </p>
             </div>
@@ -330,14 +461,20 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
               <Bot className="w-6 h-6 mx-auto text-slate-600" />
               <p className="text-xs">
                 Choose a mode and click Generate to produce test cases directly for "
-                {suiteContextName}".
+                {targetTitle}".
               </p>
+            </div>
+          )}
+
+          {!isLoading && analysisText && (
+            <div className="p-3 bg-[#1a1c2b] border border-[#2e3146] rounded-xl">
+              <MarkdownRenderer content={analysisText} className="text-xs text-slate-300" />
             </div>
           )}
 
           {!isLoading && generatedResults.length > 0 && (
             <div className="space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-white px-1 bg-[#1a1c2b] p-2 rounded-xl border border-[#2e3146] flex-wrap gap-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white px-2 py-2 bg-[#1a1c2b] rounded-xl border border-[#2e3146] flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white select-none">
                     <input
@@ -410,11 +547,11 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
                         <button
                           type="button"
                           onClick={() => handleImportSingleCase(tc)}
-                          className="px-2 py-1 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                          title="Import only this test case to suite"
+                          className="px-2.5 py-1 bg-emerald-700/80 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                          title="Import only this test case"
                         >
                           <Plus className="w-3 h-3" />
-                          <span>Import</span>
+                          <span>Import Case</span>
                         </button>
 
                         {/* Delete single case button */}
@@ -447,12 +584,6 @@ User Instructions: ${customInstructions || 'Generate comprehensive tests avoidin
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {!isLoading && analysisText && generatedResults.length === 0 && (
-            <div className="whitespace-pre-wrap font-sans text-xs text-slate-300 p-2 leading-relaxed">
-              {analysisText}
             </div>
           )}
         </div>

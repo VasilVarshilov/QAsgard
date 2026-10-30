@@ -723,10 +723,10 @@ export function exportTestRunAsPdf(
   let currentY = 16;
 
   // Sort executions strictly by tree order
-  const orderedCases = suites && suites.length > 0 ? sortTestCasesTreeOrder(testCases, suites) : testCases;
+  const orderedCases = suites && suites.length > 0 ? sortTestCasesTreeOrder(testCases, suites) : sortTestCasesChronological(testCases);
   const sortedExecutions = [...run.executions].sort((a, b) => {
-    const idxA = orderedCases.findIndex((c) => c.id === a.testCaseId);
-    const idxB = orderedCases.findIndex((c) => c.id === b.testCaseId);
+    const idxA = orderedCases.findIndex((c) => c.id === a.testCaseId || (a.testCaseKey && c.key === a.testCaseKey));
+    const idxB = orderedCases.findIndex((c) => c.id === b.testCaseId || (b.testCaseKey && c.key === b.testCaseKey));
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;

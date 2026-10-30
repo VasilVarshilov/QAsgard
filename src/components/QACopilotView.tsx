@@ -23,6 +23,7 @@ import {
   Terminal,
 } from 'lucide-react';
 import { Project, TestCase, TestSuite, Defect, User } from '../types';
+import { MarkdownRenderer } from './common/MarkdownRenderer';
 
 interface Message {
   id: string;
@@ -451,9 +452,13 @@ What would you like to review or generate?`,
                   </div>
 
                   {/* Body Content */}
-                  <div className="whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed overflow-x-auto">
-                    {msg.text}
-                  </div>
+                  {isModel ? (
+                    <MarkdownRenderer content={msg.text} className="text-xs sm:text-[13px]" />
+                  ) : (
+                    <div className="whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed">
+                      {msg.text}
+                    </div>
+                  )}
 
                   {isModel && (
                     <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-end">

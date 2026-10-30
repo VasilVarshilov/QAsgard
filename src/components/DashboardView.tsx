@@ -18,6 +18,8 @@ import {
   Upload,
   Plus,
   Check,
+  Download,
+  FileDown,
 } from 'lucide-react';
 import { Project, TestCase, TestRun, Defect, TestSuite, TestRepository } from '../types';
 
@@ -38,6 +40,7 @@ interface DashboardViewProps {
   onOpenCreateRepository?: () => void;
   onOpenImportRepository?: () => void;
   onOpenCreateProject?: () => void;
+  onExportProject?: (project: Project) => void;
   projectCount?: number;
 }
 
@@ -68,6 +71,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenCreateRepository,
   onOpenImportRepository,
   onOpenCreateProject,
+  onExportProject,
   projectCount = 0,
 }) => {
   const currentProjId = project?.id || 'all';
@@ -162,6 +166,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <span>Create your first project</span>
               </button>
             )}
+            {onOpenImportRepository && (
+              <button
+                onClick={onOpenImportRepository}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-all shadow-md hover:shadow-emerald-500/25 cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+                <span>📥 Import Project Backup (.json)</span>
+              </button>
+            )}
             <button
               onClick={() => onNavigate('import-wizard')}
               className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
@@ -232,6 +245,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {onOpenImportRepository && (
+              <button
+                onClick={onOpenImportRepository}
+                className="px-3 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Импорт на Проект или Репозитори (JSON)"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>📥 Import Project</span>
+              </button>
+            )}
+            {onExportProject && project.id !== 'all' && (
+              <button
+                onClick={() => onExportProject(project)}
+                className="px-3 py-2 text-xs font-semibold bg-indigo-700/80 hover:bg-indigo-600 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Експорт на пълен проектен бекъп (.json)"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-200" />
+                <span>📤 Export Project</span>
+              </button>
+            )}
             {onOpenCreateRepository && project.id !== 'all' && (
               <button
                 onClick={onOpenCreateRepository}
@@ -240,16 +273,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>+ New Repo</span>
-              </button>
-            )}
-            {onOpenImportRepository && project.id !== 'all' && (
-              <button
-                onClick={onOpenImportRepository}
-                className="px-3 py-2 text-xs font-semibold bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-500/40 rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Import Repository Backup (JSON)"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>📥 Import Repo</span>
               </button>
             )}
             <button

@@ -219,6 +219,8 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const [editorTestCase, setEditorTestCase] = useState<TestCase | null>(null);
   const [showCreateSuiteModal, setShowCreateSuiteModal] = useState(false);
   const [showAICopilotModal, setShowAICopilotModal] = useState(false);
+  const [aiModalTargetSuite, setAiModalTargetSuite] = useState<TestSuite | null>(null);
+  const [aiModalTargetCase, setAiModalTargetCase] = useState<TestCase | null>(null);
   const [showProjectSelectorModal, setShowProjectSelectorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportSuiteTarget, setExportSuiteTarget] = useState<TestSuite | null>(null);
@@ -249,7 +251,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   } | null>(null);
   const [importTargetRepoName, setImportTargetRepoName] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
-  const [importMode, setImportMode] = useState<'new' | 'new_repo' | 'merge'>('new_repo');
+  const [importMode, setImportMode] = useState<'new' | 'new_repo' | 'merge'>('new');
 
   const handleExportRepository = () => {
     const filename = exportRepositoryAsJson(project, projectSuites, projectCases);
@@ -346,11 +348,8 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           requirements: reqsList.length > 0 ? reqsList : undefined,
         });
 
-        if (isFullProject) {
-          setImportMode('new');
-        } else {
-          setImportMode('new_repo');
-        }
+        // User requirement: By default, importing a repository or project imports into a completely NEW project
+        setImportMode('new');
         setImportTargetRepoName(projectInfo.name || 'Imported Repository');
       } catch (err: any) {
         setImportError(`Invalid JSON format: ${err.message}`);
@@ -2462,6 +2461,8 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           setShowExportModal(true);
         }}
         onAICopilotForSuite={(suite) => {
+          setAiModalTargetSuite(suite);
+          setAiModalTargetCase(null);
           onSelectSuite(suite.id);
           setShowAICopilotModal(true);
         }}
@@ -2476,7 +2477,12 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
           setExportSuccessMessage(`Downloaded ${tc.key} as ${name}`);
           setTimeout(() => setExportSuccessMessage(null), 3500);
         }}
-        onAICopilotForCase={(tc) => setShowAICopilotModal(true)}
+        onAICopilotForCase={(tc) => {
+          setAiModalTargetCase(tc);
+          const s = projectSuites.find((st) => st.id === tc.suiteId) || activeSuite;
+          setAiModalTargetSuite(s || null);
+          setShowAICopilotModal(true);
+        }}
       />
 
       {/* =========================================================================
@@ -2485,13 +2491,22 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
       {showAICopilotModal && (
         <RepositoryAICopilotModal
           isOpen={showAICopilotModal}
-          onClose={() => setShowAICopilotModal(false)}
+          onClose={() => {
+            setShowAICopilotModal(false);
+            setAiModalTargetCase(null);
+          }}
           project={project}
-          selectedSuite={activeSuite}
+          selectedSuite={aiModalTargetSuite || activeSuite}
+          selectedCase={aiModalTargetCase}
           existingCases={projectCases}
           requirements={requirements}
           onImportGeneratedCases={(cases) => {
-            cases.forEach((c) => onAddTestCase(c));
+            cases.forEach((c, idx) => {
+              onAddTestCase({
+                ...c,
+                id: c.id || `case-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 9)}`,
+              });
+            });
           }}
         />
       )}

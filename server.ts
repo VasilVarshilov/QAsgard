@@ -629,34 +629,66 @@ Provide structured, clean, copy-paste ready answers with Markdown tables where a
       preferredModel: model,
     });
 
+    const dynamicSuggestedPrompts = context.activeCase
+      ? [
+          `Generate negative scenarios for [${context.activeCase.key}]`,
+          `Create Playwright automation for [${context.activeCase.key}]`,
+          `Audit preconditions and assertions for [${context.activeCase.key}]`,
+          `Generate boundary test values for [${context.activeCase.key}]`,
+        ]
+      : context.activeSuite
+      ? [
+          `Generate negative test cases for suite "${context.activeSuite.name}"`,
+          `Review "${context.activeSuite.name}" for missing assertions`,
+          `Which scenarios are highest risk in "${context.activeSuite.name}"?`,
+          `Recommend automation priorities for "${context.activeSuite.name}"`,
+        ]
+      : [
+          'Generate additional negative scenarios',
+          'Review current test cases for missing assertions',
+          'Recommend top automation candidates',
+          'Generate executive quality summary',
+        ];
+
     return res.json({
       success: true,
       source: 'gemini',
       model: modelUsed,
       reply: text,
-      suggestedPrompts: [
-        'Generate additional negative scenarios',
-        'Review current test cases for missing assertions',
-        'Recommend top automation candidates',
-        'Generate executive quality summary',
-      ],
+      suggestedPrompts: dynamicSuggestedPrompts,
     });
   } catch (error: any) {
     console.warn('AI live QA copilot chat failed; executing smart copilot responder:', error?.message);
   }
 
   const smartReply = generateLocalCopilotResponse(latestUserMsg, context);
+  const fallbackPrompts = context.activeCase
+    ? [
+        `Generate negative scenarios for [${context.activeCase.key}]`,
+        `Create Playwright automation for [${context.activeCase.key}]`,
+        `Audit preconditions and assertions for [${context.activeCase.key}]`,
+        `Generate boundary test values for [${context.activeCase.key}]`,
+      ]
+    : context.activeSuite
+    ? [
+        `Generate negative test cases for suite "${context.activeSuite.name}"`,
+        `Review "${context.activeSuite.name}" for missing assertions`,
+        `Which scenarios are highest risk in "${context.activeSuite.name}"?`,
+        `Recommend automation priorities for "${context.activeSuite.name}"`,
+      ]
+    : [
+        'Generate additional negative scenarios',
+        'Review current test cases for missing assertions',
+        'Recommend top automation candidates',
+        'Generate executive quality summary',
+      ];
+
   return res.json({
     success: true,
     source: 'smart_engine',
     model: 'Smart QA Assistant',
     reply: smartReply,
-    suggestedPrompts: [
-      'Generate negative and boundary tests for 3DS 2.0',
-      'Review this test suite for missing assertions',
-      'Which scenarios are highest risk in this suite?',
-      'What should be automated first for regression?',
-    ],
+    suggestedPrompts: fallbackPrompts,
   });
 });
 
@@ -679,8 +711,11 @@ function generateSmartTestCases(
   const retryMatch = text.match(/(\d+)\s*(?:times|attempts)/i);
   const attemptsCount = retryMatch ? retryMatch[1] : '3';
 
-  const is3DSecure = lower.includes('3d') || lower.includes('otp') || lower.includes('authentication') || lower.includes('sca') || lower.includes('card');
-  const isInvoice = lower.includes('invoice') || lower.includes('zugferd') || lower.includes('pdf') || lower.includes('xml');
+  const is3DSecure =
+    (lower.includes('3d secure') || lower.includes('3ds') || lower.includes('strong customer authentication') || (lower.includes('payment') && (lower.includes('otp') || lower.includes('sca')))) &&
+    !lower.includes('login') &&
+    !lower.includes('sign in');
+  const isInvoice = lower.includes('invoice') || lower.includes('zugferd') || (lower.includes('pdf') && lower.includes('xml'));
 
   if (is3DSecure) {
     return [
@@ -833,53 +868,73 @@ function generateSmartTestCases(
     ];
   }
 
-  // Generic intelligent test cases extracted directly from input content
-  const firstSentence = text.split(/[.\n]/)[0] || 'Specified functionality';
+  // Contextual intelligent test cases extracted directly from input content
+  const cleanSummary = text.replace(/^(Verify|Check|Ensure|Test)\s+/i, '').split(/[.\n]/)[0].trim() || 'Specified functionality';
+  const targetTopic = cleanSummary.slice(0, 65);
+
   return [
     {
-      title: `Verify positive verification flow: ${firstSentence.slice(0, 70)}`,
-      description: `Ensure the primary objective of the requirement behaves as expected: ${text.slice(0, 160)}...`,
+      title: `Verify positive execution flow: ${targetTopic}`,
+      description: `Ensure the primary success scenario for "${targetTopic}" functions correctly according to specification: ${text.slice(0, 160)}...`,
       suiteName: suiteName || 'Core Specifications',
       type: 'functional',
       priority: 'high',
       severity: 'blocker',
       layer: 'e2e',
-      preconditions: 'System initialized with clean user state and valid configuration.',
+      preconditions: `System initialized; user authenticated with permissions to perform ${targetTopic}.`,
       steps: [
-        { action: 'Navigate to target interface and prepare test environment', expectedResult: 'Application renders relevant form elements with 200 OK status', data: '' },
-        { action: `Execute standard action workflow matching criteria: "${firstSentence.slice(0, 50)}"`, expectedResult: 'System accepts inputs, displays affirmative feedback, and logs operation', data: 'Valid payload' },
-        { action: 'Verify persistent state in database and audit records', expectedResult: 'Record persists accurately across browser refreshes with matching attributes', data: '' },
+        { action: `Navigate to ${targetTopic} interface and verify initial component state`, expectedResult: 'Interface elements render cleanly with 200 OK status', data: '' },
+        { action: `Submit valid test payload for ${targetTopic}`, expectedResult: 'System processes request successfully, displays confirmation, and commits record', data: 'Valid payload' },
+        { action: 'Verify persistent state in data store and refresh page', expectedResult: 'State remains consistent and audit log reflects operation', data: '' },
       ],
-      tags: ['positive', 'smoke', 'spec-verified'],
+      tags: ['positive', 'smoke', 'p0', suiteName.toLowerCase().replace(/[^a-z0-9]+/g, '-')],
     },
     {
-      title: `Verify negative error handling and input sanitization on invalid state`,
-      description: `Negative verification ensuring invalid user input or aborted conditions reject safely without data corruption.`,
+      title: `Verify negative error handling & validation on invalid input: ${targetTopic}`,
+      description: `Negative verification ensuring invalid data or empty fields during "${targetTopic}" are safely rejected with clear user guidance.`,
       suiteName: suiteName || 'Core Specifications',
       type: 'security',
       priority: 'high',
       severity: 'critical',
       layer: 'e2e',
-      preconditions: 'Target form mounted on client view.',
+      preconditions: `Active session with access to ${targetTopic} form.`,
       steps: [
-        { action: 'Submit malformed or boundary-violating parameters', expectedResult: 'Validation layer triggers immediate inline warning; network request suppressed or rejected', data: 'Malformed input' },
-        { action: 'Attempt 3 consecutive invalid submissions', expectedResult: 'Rate limit or safety lockout engages with clear explanatory guidance banner', data: '' },
+        { action: `Attempt submission with empty mandatory fields for ${targetTopic}`, expectedResult: 'Inline validation alerts user to missing required fields; network call is halted', data: 'Empty fields' },
+        { action: 'Input malformed strings, boundary overflow, and special symbols', expectedResult: 'Form rejects submission with HTTP 422 or clear client-side validation badge', data: 'Boundary / Special characters' },
+        { action: 'Verify zero corrupt or partial records created in persistence store', expectedResult: 'Database remains in clean state without orphan entries', data: '' },
       ],
-      tags: ['negative', 'security', 'boundary'],
+      tags: ['negative', 'validation', 'error-handling'],
     },
     {
-      title: `Verify edge case handling under concurrent requests and latency`,
-      description: `Resilience and concurrency check ensuring idempotency and graceful timeout behavior.`,
+      title: `Verify boundary limits and edge thresholds: ${targetTopic}`,
+      description: `Boundary value analysis verifying minimum, maximum, and extreme edge conditions for ${targetTopic}.`,
       suiteName: suiteName || 'Core Specifications',
       type: 'boundary',
       priority: 'medium',
       severity: 'major',
       layer: 'api',
-      preconditions: 'Network mock latency set to 1500ms.',
+      preconditions: 'System configured with standard operational thresholds.',
       steps: [
-        { action: 'Dispatch duplicate trigger requests simultaneously within 50ms', expectedResult: 'Idempotency mechanism absorbs duplicate; single transaction executes cleanly', data: 'Idempotency-Key: UUIDv4' },
+        { action: `Execute ${targetTopic} using lower boundary limit (0 or min value)`, expectedResult: 'System processes boundary value according to business rules', data: 'Min boundary' },
+        { action: `Execute ${targetTopic} using upper boundary limit (max allowable threshold)`, expectedResult: 'System handles max threshold cleanly without truncating or crashing', data: 'Max boundary' },
+        { action: `Execute ${targetTopic} exceeding maximum threshold by 1 unit`, expectedResult: 'System rejects excess with friendly warning: "Threshold exceeded"', data: 'Max + 1' },
       ],
-      tags: ['edge-case', 'concurrency', 'idempotency'],
+      tags: ['boundary', 'edge-case', 'limits'],
+    },
+    {
+      title: `Verify resilience, session timeout, and concurrent submission: ${targetTopic}`,
+      description: `Resilience test verifying behavior under network disconnects, double-clicks, and expired authentication during ${targetTopic}.`,
+      suiteName: suiteName || 'Core Specifications',
+      type: 'security',
+      priority: 'medium',
+      severity: 'major',
+      layer: 'e2e',
+      preconditions: 'Target environment ready.',
+      steps: [
+        { action: `Double-click submit button rapidly for ${targetTopic}`, expectedResult: 'Button enters disabled state on first click; idempotency key prevents duplicate execution', data: 'Double-click' },
+        { action: 'Simulate network interruption or token expiry during processing', expectedResult: 'System displays retry prompt with state preserved; no unhandled exception thrown', data: 'Network timeout' },
+      ],
+      tags: ['resilience', 'concurrency', 'idempotency'],
     },
   ];
 }
