@@ -2111,6 +2111,17 @@ export default function App() {
 
   const activeRunningRun = testRuns.find((r) => r.id === activeRunningRunId);
 
+  const handleExportProject = (p: Project) => {
+    if (!p || p.id === ALL_PROJECTS_ID || p.id === '') return;
+    const pRepos = repositories.filter((r) => r.projectId === p.id);
+    const pSuites = testSuites.filter((s) => s.projectId === p.id);
+    const pCases = testCases.filter((c) => c.projectId === p.id);
+    const pRuns = testRuns.filter((r) => r.projectId === p.id);
+    const pDefects = defects.filter((d) => d.projectId === p.id);
+    const pReqs = requirements.filter((rq) => rq.projectId === p.id);
+    exportProjectAsJson(p, pRepos, pSuites, pCases, pRuns, pDefects, pReqs);
+  };
+
   return (
     <div
       className={`min-h-screen ${isDarkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-800'} flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white transition-colors duration-200`}
@@ -2144,6 +2155,7 @@ export default function App() {
         onRequestDeleteProject={setProjectToDelete}
         onRequestEditProject={setProjectToEdit}
         onRequestCopyProject={setProjectToCopy}
+        onExportProject={handleExportProject}
         repositories={projectRepositories}
         selectedRepositoryId={selectedRepositoryId}
         onSelectRepository={handleSelectRepository}
@@ -2173,15 +2185,7 @@ export default function App() {
             onOpenCreateRepository={() => setIsCreateRepoModalOpen(true)}
             onOpenImportRepository={() => setIsImportRepoModalOpen(true)}
             onOpenCreateProject={() => setIsCreateProjectModalOpen(true)}
-            onExportProject={(p) => {
-              const pRepos = repositories.filter((r) => r.projectId === p.id);
-              const pSuites = testSuites.filter((s) => s.projectId === p.id);
-              const pCases = testCases.filter((c) => c.projectId === p.id);
-              const pRuns = testRuns.filter((r) => r.projectId === p.id);
-              const pDefects = defects.filter((d) => d.projectId === p.id);
-              const pReqs = requirements.filter((rq) => rq.projectId === p.id);
-              exportProjectAsJson(p, pRepos, pSuites, pCases, pRuns, pDefects, pReqs);
-            }}
+            onExportProject={handleExportProject}
             projectCount={projects.length}
           />
         )}

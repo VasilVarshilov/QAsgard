@@ -21,6 +21,9 @@ import {
   HelpCircle,
   BookOpen,
   Terminal,
+  Maximize2,
+  Minimize2,
+  X,
 } from 'lucide-react';
 import { Project, TestCase, TestSuite, Defect, User } from '../types';
 import { MarkdownRenderer } from './common/MarkdownRenderer';
@@ -56,6 +59,8 @@ export const QACopilotView: React.FC<QACopilotViewProps> = ({
   const [inputPrompt, setInputPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  const [fullscreenMessage, setFullscreenMessage] = useState<Message | null>(null);
 
   // Initial welcome message from QA Copilot
   const [messages, setMessages] = useState<Message[]>([
@@ -89,6 +94,21 @@ What would you like to review or generate?`,
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
+
+  // Handle ESC key to exit full screen or close full screen modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (fullscreenMessage) {
+          setFullscreenMessage(null);
+        } else if (isFullScreen) {
+          setIsFullScreen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullScreen, fullscreenMessage]);
 
   const activeSuite =
     selectedSuiteId === 'all' ? null : testSuites.find((s) => s.id === selectedSuiteId);
@@ -306,7 +326,13 @@ What would you like to review or generate?`,
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 h-[calc(100vh-5rem)] flex flex-col">
+    <div
+      className={
+        isFullScreen
+          ? 'fixed inset-0 z-50 bg-slate-100 dark:bg-slate-950 p-3 sm:p-5 flex flex-col h-screen w-screen overflow-hidden'
+          : 'p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 h-[calc(100vh-5rem)] flex flex-col'
+      }
+    >
       {/* Top Banner / Studio Header */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -382,6 +408,29 @@ What would you like to review or generate?`,
             </select>
           </div>
 
+          {/* Full Screen Toggle Button */}
+          <button
+            onClick={() => setIsFullScreen((prev) => !prev)}
+            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              isFullScreen
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm hover:bg-indigo-700'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+            title={isFullScreen ? 'Exit Full Screen (ESC) / Изход от цял екран' : 'Full Screen / Отвори на цял екран'}
+          >
+            {isFullScreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Exit Full Screen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
+                <span className="hidden sm:inline">Full Screen</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={handleClearHistory}
             className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -436,17 +485,26 @@ What would you like to review or generate?`,
                       )}
                       <span>{msg.timestamp}</span>
                       {isModel && (
-                        <button
-                          onClick={() => copyToClipboard(msg.text, msg.id)}
-                          className="hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer ml-1"
-                          title="Copy to clipboard"
-                        >
-                          {copiedId === msg.id ? (
-                            <Check className="w-3 h-3 text-emerald-500" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </button>
+                        <div className="flex items-center gap-1.5 ml-1">
+                          <button
+                            onClick={() => setFullscreenMessage(msg)}
+                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5 rounded cursor-pointer transition-colors"
+                            title="Open this response in Full Screen Modal / Разпъни отговора на цял екран"
+                          >
+                            <Maximize2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(msg.text, msg.id)}
+                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5 rounded cursor-pointer transition-colors"
+                            title="Copy to clipboard"
+                          >
+                            {copiedId === msg.id ? (
+                              <Check className="w-3 h-3 text-emerald-500" />
+                            ) : (
+                              <Copy className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -555,6 +613,69 @@ What would you like to review or generate?`,
           </div>
         </div>
       </div>
+
+      {/* Individual Response Full-Screen Modal */}
+      {fullscreenMessage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150"
+          onClick={() => setFullscreenMessage(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold leading-tight">QA Copilot • Response Full Screen</h3>
+                  <span className="text-[11px] text-slate-300">
+                    {fullscreenMessage.modelUsed ? `Model: ${fullscreenMessage.modelUsed} • ` : ''}
+                    {fullscreenMessage.timestamp}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(fullscreenMessage.text, fullscreenMessage.id)}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Copy full response"
+                >
+                  {copiedId === fullscreenMessage.id ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy All</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFullscreenMessage(null)}
+                  className="p-1.5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg transition-colors cursor-pointer"
+                  title="Close Full Screen (ESC)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Scrollable Content */}
+            <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-4 bg-slate-50/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 text-sm">
+              <MarkdownRenderer content={fullscreenMessage.text} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

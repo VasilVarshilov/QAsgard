@@ -71,6 +71,7 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>('gemini-3.5-flash');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
 
   // Dragging state
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -123,7 +124,7 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
     return () => window.removeEventListener('resize', handleResize);
   }, [preferences.edgeSnapping]);
 
-  // Keyboard Shortcuts: Ctrl+Shift+A (toggle) and ESC (minimize)
+  // Keyboard Shortcuts: Ctrl+Shift+A (toggle) and ESC (minimize/exit fullscreen)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl + Shift + A or Cmd + Shift + A
@@ -136,15 +137,19 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
         }
       }
 
-      // ESC minimizes expanded window
+      // ESC minimizes expanded window or exits fullscreen
       if (e.key === 'Escape' && displayState === 'expanded') {
-        onUpdatePreferences({ state: 'minimized' });
+        if (isFullScreen) {
+          setIsFullScreen(false);
+        } else {
+          onUpdatePreferences({ state: 'minimized' });
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [displayState, onUpdatePreferences]);
+  }, [displayState, isFullScreen, onUpdatePreferences]);
 
   // Auto-collapse idle timer
   const resetInactivityTimer = useCallback(() => {
@@ -495,12 +500,29 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
       {/* 3. EXPANDED STATE: Full AI Chat Window with Draggable Anchor & Controls */}
       {displayState === 'expanded' && (
         <div
-          style={{
-            position: 'fixed',
-            left: `${Math.max(16, drawerLeft)}px`,
-            top: `${Math.max(50, drawerTop)}px`,
-          }}
-          className="z-50 print:hidden w-[92vw] sm:w-[450px] md:w-[480px] h-[580px] max-h-[85vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          style={
+            isFullScreen
+              ? {
+                  position: 'fixed',
+                  left: '12px',
+                  top: '12px',
+                  right: '12px',
+                  bottom: '12px',
+                  width: 'calc(100vw - 24px)',
+                  height: 'calc(100vh - 24px)',
+                  maxHeight: 'none',
+                }
+              : {
+                  position: 'fixed',
+                  left: `${Math.max(16, drawerLeft)}px`,
+                  top: `${Math.max(50, drawerTop)}px`,
+                }
+          }
+          className={`z-50 print:hidden ${
+            isFullScreen
+              ? 'w-[calc(100vw-24px)] h-[calc(100vh-24px)]'
+              : 'w-[92vw] sm:w-[450px] md:w-[480px] h-[580px] max-h-[85vh]'
+          } bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
           role="dialog"
           aria-label="QA Copilot Chat Studio"
         >
@@ -524,6 +546,25 @@ export const QACopilotFloatingDrawer: React.FC<QACopilotFloatingDrawerProps> = (
 
             {/* Quick Actions in Header */}
             <div className="flex items-center gap-1 text-slate-400">
+              {/* Full Screen Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setIsFullScreen((prev) => !prev)}
+                className={`p-1 rounded-md transition-colors cursor-pointer ${
+                  isFullScreen
+                    ? 'text-amber-300 bg-white/20'
+                    : 'hover:text-white hover:bg-white/10 text-slate-400'
+                }`}
+                title={isFullScreen ? 'Exit Full Screen / Нормален прозорец (ESC)' : 'Full Screen / Отвори на цял екран'}
+                aria-label="Toggle Full Screen"
+              >
+                {isFullScreen ? (
+                  <Minimize2 className="w-3.5 h-3.5 text-amber-300" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5 text-slate-300" />
+                )}
+              </button>
+
               {/* Settings / Preferences Button */}
               {onOpenPreferencesModal && (
                 <button
