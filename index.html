@@ -5,6 +5,38 @@
     <script>
       // Suppress benign Vite HMR WebSocket errors in iframe preview
       (function () {
+        // Intercept Vite HMR WebSocket instantiation so it never tries to connect or error
+        try {
+          const RealWebSocket = window.WebSocket;
+          if (RealWebSocket) {
+            window.WebSocket = function (url, protocols) {
+              const isHmr =
+                (typeof protocols === 'string' && protocols.includes('vite-hmr')) ||
+                (Array.isArray(protocols) && protocols.includes('vite-hmr')) ||
+                (typeof url === 'string' && (url.includes('vite-hmr') || url.includes('@vite')));
+
+              if (isHmr) {
+                const dummy = new EventTarget();
+                dummy.binaryType = 'blob';
+                dummy.readyState = 1; // OPEN
+                dummy.url = String(url);
+                dummy.protocol = 'vite-hmr';
+                dummy.extensions = '';
+                dummy.bufferedAmount = 0;
+                dummy.send = function () {};
+                dummy.close = function () {};
+                return dummy;
+              }
+              return new RealWebSocket(url, protocols);
+            };
+            window.WebSocket.prototype = RealWebSocket.prototype;
+            window.WebSocket.CONNECTING = RealWebSocket.CONNECTING;
+            window.WebSocket.OPEN = RealWebSocket.OPEN;
+            window.WebSocket.CLOSING = RealWebSocket.CLOSING;
+            window.WebSocket.CLOSED = RealWebSocket.CLOSED;
+          }
+        } catch (_) {}
+
         function isViteWsError(str) {
           if (!str) return false;
           const s = String(str);
