@@ -168,20 +168,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
             {onOpenImportRepository && (
               <button
-                onClick={onOpenImportRepository}
+                onClick={() => {
+                  onNavigate('repository');
+                  onOpenImportRepository();
+                }}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-all shadow-md hover:shadow-emerald-500/25 cursor-pointer"
+                title="Импортирай съществуващо репозитори или проект (JSON)"
               >
                 <Upload className="w-4 h-4" />
-                <span>📥 Import Project Backup (.json)</span>
+                <span>Import Existing Repository</span>
               </button>
             )}
-            <button
-              onClick={() => onNavigate('import-wizard')}
-              className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Import Existing Repository</span>
-            </button>
           </div>
         </div>
 
@@ -247,7 +244,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {onOpenImportRepository && (
               <button
-                onClick={onOpenImportRepository}
+                onClick={() => {
+                  onNavigate('repository');
+                  onOpenImportRepository();
+                }}
                 className="px-3 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
                 title="Импорт на Проект или Репозитори (JSON)"
               >
@@ -350,7 +350,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
               {onOpenImportRepository && (
                 <button
-                  onClick={onOpenImportRepository}
+                  onClick={() => {
+                    onNavigate('repository');
+                    onOpenImportRepository();
+                  }}
                   className="px-3 py-1.5 text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
