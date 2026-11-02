@@ -326,13 +326,7 @@ What would you like to review or generate?`,
   };
 
   return (
-    <div
-      className={
-        isFullScreen
-          ? 'fixed inset-0 z-50 bg-slate-100 dark:bg-slate-950 p-3 sm:p-5 flex flex-col h-screen w-screen overflow-hidden'
-          : 'p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 h-[calc(100vh-5rem)] flex flex-col'
-      }
-    >
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 h-[calc(100vh-5rem)] flex flex-col">
       {/* Top Banner / Studio Header */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -408,29 +402,6 @@ What would you like to review or generate?`,
             </select>
           </div>
 
-          {/* Full Screen Toggle Button */}
-          <button
-            onClick={() => setIsFullScreen((prev) => !prev)}
-            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              isFullScreen
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm hover:bg-indigo-700'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-            title={isFullScreen ? 'Exit Full Screen (ESC) / Изход от цял екран' : 'Full Screen / Отвори на цял екран'}
-          >
-            {isFullScreen ? (
-              <>
-                <Minimize2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Exit Full Screen</span>
-              </>
-            ) : (
-              <>
-                <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
-                <span className="hidden sm:inline">Full Screen</span>
-              </>
-            )}
-          </button>
-
           <button
             onClick={handleClearHistory}
             className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -441,8 +412,69 @@ What would you like to review or generate?`,
         </div>
       </div>
 
-      {/* Main Chat Thread */}
-      <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col min-h-0">
+      {/* Main Chat Thread (Responses Window) */}
+      <div
+        className={
+          isFullScreen
+            ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 flex flex-col h-screen w-screen overflow-hidden animate-in fade-in zoom-in-95 duration-100'
+            : 'flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col min-h-0'
+        }
+      >
+        {/* Dedicated Window Header for Responses & Controls */}
+        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+              {isFullScreen ? 'QA Copilot • Прозорец с отговори (Цял екран)' : 'Прозорец с отговори'}
+            </span>
+            {activeCase ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono truncate max-w-[180px] sm:max-w-xs">
+                [{activeCase.key}] {activeCase.title}
+              </span>
+            ) : activeSuite ? (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                {activeSuite.name}
+              </span>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                {project.name}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Toggle Full Screen for the Responses Window */}
+            <button
+              onClick={() => setIsFullScreen((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                isFullScreen
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm hover:bg-indigo-700'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-2xs'
+              }`}
+              title={isFullScreen ? 'Exit Full Screen (ESC) / Изход от цял екран' : 'Full Screen Responses / Отвори прозореца на отговорите на цял екран'}
+            >
+              {isFullScreen ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Изход от цял екран (ESC)</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className="hidden sm:inline">Цял екран</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleClearHistory}
+              className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              title="Clear Chat History"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6">
           {messages.map((msg) => {
             const isModel = msg.role === 'model';

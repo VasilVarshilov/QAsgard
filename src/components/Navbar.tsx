@@ -254,9 +254,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Brand and Context Selectors */}
         <div className="flex items-center space-x-3">
           <div
-            className="flex items-center space-x-2.5 cursor-pointer hover:opacity-90 transition-opacity"
+            className="flex items-center gap-2.5 cursor-pointer group select-none hover:opacity-95 transition-opacity"
             onClick={() => onSelectTab('dashboard')}
-            title="QAsgard - Към основното табло / Back to Dashboard"
+            title="QAsgard • Where Quality Rules - Към таблото"
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
@@ -266,7 +266,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }
             }}
           >
-            <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-200/80 dark:border-slate-700 bg-slate-900 shadow-sm flex items-center justify-center shrink-0">
+            <div className="relative w-8 h-8 rounded-xl overflow-hidden border border-slate-200/90 dark:border-slate-700/90 bg-slate-950 shadow-xs flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
               <img
                 src={getLogoUrl()}
                 alt="QAsgard Logo"
@@ -281,14 +281,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
               />
             </div>
-            <div className="hidden sm:flex flex-col text-left">
-              <div className="flex items-center gap-1.5 leading-none">
-                <span className="font-extrabold text-slate-900 dark:text-white tracking-tight text-base font-sans">
-                  QAsgard
-                </span>
-              </div>
-              <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 tracking-wide mt-0.5">
-                Where Quality Rules
+            <div className="flex items-center gap-2 leading-none">
+              <span className="font-extrabold text-slate-900 dark:text-white tracking-tight text-base sm:text-lg">
+                QAsgard
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-800 text-[11px] font-medium text-slate-400 dark:text-slate-400">
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Where Quality Rules</span>
               </span>
             </div>
           </div>
@@ -350,26 +348,41 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
 
                 {projects.length === 0 ? (
-                  <div className="py-7 px-4 text-center">
+                  <div className="py-6 px-4 text-center">
                     <FolderGit2 className="w-8 h-8 text-slate-400 dark:text-slate-600 mx-auto mb-2 opacity-80" />
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      No projects yet
+                      No projects yet / Няма зареден проект
                     </p>
                     <p className="text-[11px] text-slate-400 mt-0.5 mb-3.5">
-                      Create your first QA project to get started
+                      Create your first QA project or import a project backup (.json)
                     </p>
-                    {onOpenCreateProject && (
-                      <button
-                        onClick={() => {
-                          setProjectDropdownOpen(false);
-                          onOpenCreateProject();
-                        }}
-                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Create your first project</span>
-                      </button>
-                    )}
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      {onOpenCreateProject && (
+                        <button
+                          onClick={() => {
+                            setProjectDropdownOpen(false);
+                            onOpenCreateProject();
+                          }}
+                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ New Project</span>
+                        </button>
+                      )}
+                      {onOpenImportRepository && (
+                        <button
+                          onClick={() => {
+                            setProjectDropdownOpen(false);
+                            onOpenImportRepository();
+                          }}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                          title="Import Project Backup (.json)"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📥 Import Project (.json)</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -436,37 +449,50 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     </div>
 
-                    {/* Active Project Export & Import Actions */}
-                    {currentProject?.id !== 'all' && currentProject?.id !== '' && onExportProject && (
-                      <div className="px-2 pt-0.5 pb-1.5 flex items-center gap-1.5">
+                    {/* Project Export & Import Actions */}
+                    <div className="px-2 pt-0.5 pb-1.5 flex items-center gap-1.5">
+                      {onExportProject && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!currentProject || currentProject.id === '' || currentProject.id === 'all' || projects.length === 0) {
+                              alert('Няма избран индивидуален проект за експорт. Моля, изберете проект от списъка долу.');
+                              return;
+                            }
+                            setProjectDropdownOpen(false);
+                            onExportProject(currentProject);
+                          }}
+                          disabled={projects.length === 0 || currentProject?.id === 'all' || currentProject?.id === ''}
+                          className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border shadow-2xs ${
+                            projects.length === 0 || currentProject?.id === 'all' || currentProject?.id === ''
+                              ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
+                              : 'bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 cursor-pointer'
+                          }`}
+                          title={
+                            currentProject?.id === 'all'
+                              ? 'Изберете конкретен проект от списъка за експорт'
+                              : `Export full backup for ${currentProject.name} (.json) / Експорт на проект`
+                          }
+                        >
+                          <FileDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span>📤 Export {currentProject?.id !== 'all' && currentProject?.key ? `(${currentProject.key})` : 'Project'}</span>
+                        </button>
+                      )}
+                      {onOpenImportRepository && (
                         <button
                           type="button"
                           onClick={() => {
                             setProjectDropdownOpen(false);
-                            onExportProject(currentProject);
+                            onOpenImportRepository();
                           }}
-                          className="flex-1 py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border border-emerald-200 dark:border-emerald-800 shadow-2xs"
-                          title={`Export full backup for ${currentProject.name} (.json) / Експорт на проект`}
+                          className="flex-1 py-1.5 px-2.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border border-indigo-200 dark:border-indigo-800"
+                          title="Import Project / Repository backup (.json) / Импорт на проект"
                         >
-                          <FileDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                          <span>📤 Export Project ({currentProject.key})</span>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>📥 Import Project</span>
                         </button>
-                        {onOpenImportRepository && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setProjectDropdownOpen(false);
-                              onOpenImportRepository();
-                            }}
-                            className="py-1.5 px-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border border-slate-200 dark:border-slate-700"
-                            title="Import Project / Repository backup (.json) / Импорт на проект"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>📥 Import</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     <div className="px-3 pt-2 pb-1 border-t border-slate-100 flex items-center justify-between text-[11px] font-semibold text-slate-400">
                       <span className="uppercase tracking-wider text-[10px]">
@@ -778,15 +804,40 @@ export const Navbar: React.FC<NavbarProps> = ({
             </kbd>
           </button>
 
-          {/* Quick Create & Project Export buttons */}
+          {/* Quick Create & Project Import/Export buttons */}
           <div className="flex items-center space-x-1.5">
-            {onExportProject && currentProject.id !== 'all' && currentProject.id !== '' && (
+            {onOpenImportRepository && (
               <button
-                onClick={() => onExportProject(currentProject)}
+                onClick={onOpenImportRepository}
                 className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                title={`Export project "${currentProject.name}" as JSON backup / Експорт на проект (.json)`}
+                title="Импорт на цял проект или репозитори (.json) / Import Project (.json)"
               >
-                <FileDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <Upload className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline">Import Project</span>
+              </button>
+            )}
+            {onExportProject && (
+              <button
+                onClick={() => {
+                  if (projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all') {
+                    alert('Няма зареден проект за експорт. Моля, първо създайте или импортирайте проект.');
+                    return;
+                  }
+                  onExportProject(currentProject);
+                }}
+                disabled={projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'}
+                className={`flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                  projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'
+                    ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
+                    : 'text-indigo-700 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 cursor-pointer shadow-2xs'
+                }`}
+                title={
+                  projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'
+                    ? 'Няма зареден проект за експорт / No project to export'
+                    : `Export project "${currentProject.name}" as JSON backup / Експорт на проект (.json)`
+                }
+              >
+                <FileDown className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Export Project</span>
               </button>
             )}
