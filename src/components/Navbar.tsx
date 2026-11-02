@@ -804,58 +804,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </kbd>
           </button>
 
-          {/* Quick Create & Project Import/Export buttons */}
-          <div className="flex items-center space-x-1.5">
-            {onOpenImportRepository && (
-              <button
-                onClick={onOpenImportRepository}
-                className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 dark:hover:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                title="Импорт на цял проект или репозитори (.json) / Import Project (.json)"
-              >
-                <Upload className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden sm:inline">Import Project</span>
-              </button>
-            )}
-            {onExportProject && (
-              <button
-                onClick={() => {
-                  if (projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all') {
-                    alert('Няма зареден проект за експорт. Моля, първо създайте или импортирайте проект.');
-                    return;
-                  }
-                  onExportProject(currentProject);
-                }}
-                disabled={projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'}
-                className={`flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                  projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'
-                    ? 'opacity-60 cursor-not-allowed bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
-                    : 'text-indigo-700 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 cursor-pointer shadow-2xs'
-                }`}
-                title={
-                  projects.length === 0 || !currentProject || currentProject.id === '' || currentProject.id === 'all'
-                    ? 'Няма зареден проект за експорт / No project to export'
-                    : `Export project "${currentProject.name}" as JSON backup / Експорт на проект (.json)`
-                }
-              >
-                <FileDown className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Export Project</span>
-              </button>
-            )}
-            <button
-              onClick={onOpenCreateCase}
-              className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
-              <span className="hidden sm:inline">New Case</span>
-            </button>
-            <button
-              onClick={onOpenCreateRun}
-              className="flex items-center space-x-1 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
-            >
-              <PlayCircle className="w-3.5 h-3.5" />
-              <span>New Run</span>
-            </button>
-          </div>
 
           {/* PWA Install Button */}
           <PWAInstallButton variant="navbar" />
