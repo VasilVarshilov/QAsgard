@@ -132,6 +132,89 @@ export function getDescendantSuiteIds(parentId: string, suites: TestSuite[]): st
   return result;
 }
 
+export interface SuiteHierarchyInfo {
+  mainSuite: TestSuite | null;
+  mainSuiteName: string;
+  isChild: boolean;
+  childSuite: TestSuite | null;
+  childSuiteName: string | null;
+  hierarchyPath: string;
+  pathParts: string[];
+}
+
+/**
+ * Resolves the root (main) suite and breadcrumb path for a given suite ID.
+ * Returns pathParts ordered from root main suite -> child -> child of child.
+ */
+export function getSuiteHierarchy(
+  suiteId: string | undefined | null,
+  allSuites: TestSuite[] = []
+): SuiteHierarchyInfo {
+  if (!suiteId || !allSuites || allSuites.length === 0) {
+    return {
+      mainSuite: null,
+      mainSuiteName: '',
+      isChild: false,
+      childSuite: null,
+      childSuiteName: null,
+      hierarchyPath: '',
+      pathParts: [],
+    };
+  }
+
+  const directSuite =
+    allSuites.find((s) => s.id === suiteId) ||
+    allSuites.find((s) => s.name === suiteId);
+
+  if (!directSuite) {
+    return {
+      mainSuite: null,
+      mainSuiteName: '',
+      isChild: false,
+      childSuite: null,
+      childSuiteName: null,
+      hierarchyPath: '',
+      pathParts: [],
+    };
+  }
+
+  if (!directSuite.parentId) {
+    return {
+      mainSuite: directSuite,
+      mainSuiteName: directSuite.name,
+      isChild: false,
+      childSuite: null,
+      childSuiteName: null,
+      hierarchyPath: directSuite.name,
+      pathParts: [directSuite.name],
+    };
+  }
+
+  // Follow parentId chain up to the root main suite
+  let current = directSuite;
+  const pathParts: string[] = [directSuite.name];
+  const visited = new Set<string>();
+
+  while (current.parentId && !visited.has(current.id)) {
+    visited.add(current.id);
+    const parent = allSuites.find((s) => s.id === current.parentId);
+    if (!parent) break;
+    current = parent;
+    pathParts.unshift(current.name);
+  }
+
+  const mainSuite = current;
+  return {
+    mainSuite,
+    mainSuiteName: mainSuite.name,
+    isChild: true,
+    childSuite: directSuite,
+    childSuiteName: directSuite.name,
+    hierarchyPath: pathParts.join(' > '),
+    pathParts,
+  };
+}
+
 /**
  * Sorts test cases in natural chronological / sequential numerical order:
  * 1. Explicit TC numbers in title (TC-001, TC-002, TC-003, ..., TC-021)

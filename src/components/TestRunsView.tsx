@@ -17,7 +17,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Project, TestRun, TestCase, TestSuite, Defect, TestRepository } from '../types';
-import { exportTestRunAsPdf, sortTestCasesChronological, sortTestCasesTreeOrder } from '../utils/exportUtils';
+import { exportTestRunAsPdf, sortTestCasesChronological, sortTestCasesTreeOrder, getSuiteHierarchy } from '../utils/exportUtils';
 
 interface TestRunsViewProps {
   project: Project;
@@ -629,11 +629,35 @@ export const TestRunsView: React.FC<TestRunsViewProps> = ({
                           <span className="font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
                             {tc.title}
                           </span>
-                          {tc.suiteName && (
-                            <span className="text-[10px] text-slate-400 truncate max-w-[120px] shrink-0 hidden sm:inline">
-                              {tc.suiteName}
-                            </span>
-                          )}
+                          {(() => {
+                            const suiteInfo = getSuiteHierarchy(tc.suiteId, testSuites);
+                            const parts =
+                              suiteInfo.pathParts && suiteInfo.pathParts.length > 0
+                                ? suiteInfo.pathParts
+                                : tc.suiteName
+                                ? [tc.suiteName]
+                                : [];
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="flex items-center gap-1 shrink-0 hidden sm:flex">
+                                {parts.map((p, pIdx) => (
+                                  <React.Fragment key={pIdx}>
+                                    <span className="text-slate-300 dark:text-slate-600 text-[10px]">|</span>
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.5 rounded border truncate max-w-[110px] ${
+                                        pIdx === 0
+                                          ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 font-medium'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                                      }`}
+                                      title={suiteInfo.hierarchyPath || p}
+                                    >
+                                      {p}
+                                    </span>
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            );
+                          })()}
                           <span
                             className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold shrink-0 ${
                               tc.priority === 'highest' || tc.priority === 'high'

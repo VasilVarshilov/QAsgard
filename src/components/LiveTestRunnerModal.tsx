@@ -38,7 +38,7 @@ import {
   User,
   TestSeverity,
 } from '../types';
-import { exportTestRunAsPdf, sortTestCasesTreeOrder } from '../utils/exportUtils';
+import { exportTestRunAsPdf, sortTestCasesTreeOrder, getSuiteHierarchy } from '../utils/exportUtils';
 
 interface LiveTestRunnerModalProps {
   run: TestRun;
@@ -90,6 +90,55 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
   const activeExecution = sortedExecutions[selectedIndex] || sortedExecutions[0];
   const activeCase = testCases.find((tc) => tc.id === activeExecution?.testCaseId);
 
+  // Pre-calculate suite hierarchy information for all test cases
+  const caseSuiteInfoMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        mainSuiteName: string;
+        isChild: boolean;
+        childSuiteName: string | null;
+        hierarchyPath: string;
+        pathParts: string[];
+      }
+    >();
+    testCases.forEach((tc) => {
+      if (testSuites && testSuites.length > 0) {
+        const info = getSuiteHierarchy(tc.suiteId, testSuites);
+        if (info.mainSuiteName) {
+          map.set(tc.id, {
+            mainSuiteName: info.mainSuiteName,
+            isChild: info.isChild,
+            childSuiteName: info.childSuiteName,
+            hierarchyPath: info.hierarchyPath,
+            pathParts: info.pathParts || [info.mainSuiteName],
+          });
+          return;
+        }
+      }
+      if (tc.suiteName) {
+        const parts = tc.suiteName.includes(' > ')
+          ? tc.suiteName.split(' > ')
+          : tc.suiteName.includes(' / ')
+          ? tc.suiteName.split(' / ')
+          : [tc.suiteName];
+        map.set(tc.id, {
+          mainSuiteName: parts[0],
+          isChild: parts.length > 1,
+          childSuiteName: parts.length > 1 ? parts[parts.length - 1] : null,
+          hierarchyPath: tc.suiteName,
+          pathParts: parts,
+        });
+      }
+    });
+    return map;
+  }, [testCases, testSuites]);
+
+  const activeSuiteInfo = useMemo(() => {
+    if (!activeCase) return null;
+    return caseSuiteInfoMap.get(activeCase.id) || null;
+  }, [activeCase, caseSuiteInfoMap]);
+
   const passedCount = useMemo(
     () => sortedExecutions.filter((e) => e.status === 'passed').length,
     [sortedExecutions]
@@ -99,10 +148,16 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
     [sortedExecutions]
   );
 
-  // Active step comments state (stepNumber -> boolean open, stepNumber -> draft text)
-  const [stepCommentsOpen, setStepCommentsOpen] = useState<Record<number, boolean>>({});
-  const [stepCommentDraft, setStepCommentDraft] = useState<Record<number, string>>({});
+  // Active step comments state (stepKey -> boolean open, stepKey -> draft text)
+  const [stepCommentsOpen, setStepCommentsOpen] = useState<Record<string, boolean>>({});
+  const [stepCommentDraft, setStepCommentDraft] = useState<Record<string, string>>({});
   const [isCompletedModalOpen, setIsCompletedModalOpen] = useState(false);
+
+  // Auto-reset transient step comment drafts and open boxes when switching between cases
+  useEffect(() => {
+    setStepCommentsOpen({});
+    setStepCommentDraft({});
+  }, [activeExecution?.id, activeExecution?.testCaseId]);
 
   // Active Timer Persistence Key
   const getTimerKey = (testCaseId?: string) => {
@@ -395,12 +450,13 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
       stepResults: updatedStepResults,
     };
     onUpdateExecution(run.id, updatedExecution);
+    const stepKey = `${activeExecution.id || activeExecution.testCaseId}_${stepNumber}`;
     setStepCommentDraft((prev) => {
       const copy = { ...prev };
-      delete copy[stepNumber];
+      delete copy[stepKey];
       return copy;
     });
-    setStepCommentsOpen((prev) => ({ ...prev, [stepNumber]: false }));
+    setStepCommentsOpen((prev) => ({ ...prev, [stepKey]: false }));
     setToastMessage(`Step ${stepNumber} comment deleted.`);
     setTimeout(() => setToastMessage(null), 2500);
   };
@@ -740,7 +796,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
         {/* Runner Body: Split layout */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left Case Navigator - strictly chronological from first to last */}
-          <aside className="w-72 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
+          <aside className="w-80 lg:w-84 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
             <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-semibold">
               <span>Test Queue ({sortedExecutions.length})</span>
               <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
@@ -755,6 +811,21 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                   filedDefectsByCaseId[exec.testCaseId] ||
                   (exec.defectIds && exec.defectIds.length > 0);
                 const defectKey = filedDefectsByCaseId[exec.testCaseId] || exec.defectIds?.[0];
+                const suiteInfo =
+                  caseSuiteInfoMap.get(exec.testCaseId) ||
+                  (exec.suiteName
+                    ? {
+                        mainSuiteName: exec.suiteName,
+                        isChild: false,
+                        childSuiteName: null,
+                        hierarchyPath: exec.suiteName,
+                        pathParts: exec.suiteName.includes(' > ')
+                          ? exec.suiteName.split(' > ')
+                          : exec.suiteName.includes(' / ')
+                          ? exec.suiteName.split(' / ')
+                          : [exec.suiteName],
+                      }
+                    : null);
                 return (
                   <button
                     key={exec.id}
@@ -785,18 +856,50 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                         <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 dark:border-slate-600 shrink-0" />
                       )}
                       <div className="truncate flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 leading-tight">
-                          <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                        <div className="flex items-center gap-1 leading-tight flex-wrap min-w-0">
+                          <span className="font-mono text-[10px] font-bold text-slate-400 dark:text-slate-500 shrink-0">
                             {exec.testCaseKey}
                           </span>
+                          {suiteInfo && suiteInfo.pathParts && suiteInfo.pathParts.length > 0 && (
+                            <div className="inline-flex items-center gap-1 flex-wrap min-w-0">
+                              {suiteInfo.pathParts.map((part, pIdx) => {
+                                const isMain = pIdx === 0;
+                                return (
+                                  <React.Fragment key={pIdx}>
+                                    <span className="text-slate-300 dark:text-slate-600 text-[10px] font-normal shrink-0 select-none">
+                                      |
+                                    </span>
+                                    <span
+                                      className={`text-[9.5px] px-1.5 py-0.2 rounded truncate max-w-[110px] shrink-0 border ${
+                                        isMain
+                                          ? isSelected
+                                            ? 'bg-indigo-100/90 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 font-semibold'
+                                            : 'bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200/60 dark:border-indigo-800/60 font-medium'
+                                          : isSelected
+                                            ? 'bg-slate-200/90 text-slate-800 dark:bg-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 font-medium'
+                                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200/70 dark:border-slate-700/60'
+                                      }`}
+                                      title={
+                                        isMain
+                                          ? `Главният suit: ${part}`
+                                          : `Child suit (${pIdx}): ${part}\nПълна структура: ${suiteInfo.hierarchyPath}`
+                                      }
+                                    >
+                                      {part}
+                                    </span>
+                                  </React.Fragment>
+                                );
+                              })}
+                            </div>
+                          )}
                           {hasDefect && (
-                            <span className="text-[9px] font-mono font-bold text-rose-500 flex items-center gap-0.5 shrink-0">
+                            <span className="text-[9px] font-mono font-bold text-rose-500 flex items-center gap-0.5 shrink-0 ml-0.5">
                               <Bug className="w-2.5 h-2.5" />
                               {defectKey}
                             </span>
                           )}
                         </div>
-                        <div className="truncate text-slate-800 dark:text-slate-200">
+                        <div className="truncate text-slate-800 dark:text-slate-200 mt-0.5 font-medium">
                           {exec.testCaseTitle}
                         </div>
                       </div>
@@ -851,9 +954,34 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                       <span className="font-mono text-xs font-bold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
                         {activeCase.key}
                       </span>
-                      <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-xs">
-                        {activeCase.suiteName}
-                      </span>
+                      {activeSuiteInfo && activeSuiteInfo.pathParts && activeSuiteInfo.pathParts.length > 0 ? (
+                        <div
+                          className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-md flex items-center gap-1.5 flex-wrap"
+                          title={activeSuiteInfo.hierarchyPath}
+                        >
+                          {activeSuiteInfo.pathParts.map((part, pIdx) => {
+                            const isMain = pIdx === 0;
+                            return (
+                              <React.Fragment key={pIdx}>
+                                <span className="text-slate-300 dark:text-slate-600 font-normal">|</span>
+                                <span
+                                  className={
+                                    isMain
+                                      ? 'font-semibold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded'
+                                      : 'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 px-1.5 py-0.5 rounded font-normal'
+                                  }
+                                >
+                                  {part}
+                                </span>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+                      ) : activeCase.suiteName ? (
+                        <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-xs">
+                          {activeCase.suiteName}
+                        </span>
+                      ) : null}
                       <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50 rounded-full">
                         {activeCase.layer}
                       </span>
@@ -930,15 +1058,17 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                   </h3>
 
                   <div className="space-y-3 min-w-0">
-                    {activeCase.steps.map((step) => {
+                    {activeCase.steps.map((step, stepIdx) => {
+                      const stepNumber = step.stepNumber || stepIdx + 1;
+                      const stepKey = `${activeExecution.id || activeExecution.testCaseId}_${stepNumber}`;
                       const stepResult = (activeExecution.stepResults || []).find(
-                        (s) => s.stepNumber === step.stepNumber
+                        (s) => s.stepNumber === stepNumber
                       );
                       const currentStatus = stepResult?.status || 'untested';
 
                       return (
                         <div
-                          key={step.stepNumber}
+                          key={stepKey}
                           className={`p-3.5 rounded-xl border transition-all text-xs min-w-0 max-w-full overflow-hidden ${
                             currentStatus === 'passed'
                               ? 'bg-emerald-50/40 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60'
@@ -960,7 +1090,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                       : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                                 }`}
                               >
-                                {step.stepNumber}
+                                {stepNumber}
                               </span>
                               <div className="space-y-2 flex-1 min-w-0 overflow-hidden">
                                 <div className="font-semibold text-slate-900 dark:text-white flex flex-wrap items-center gap-2 min-w-0 break-words">
@@ -996,11 +1126,11 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                         onClick={() => {
                                           setStepCommentDraft((prev) => ({
                                             ...prev,
-                                            [step.stepNumber]: stepResult.comment || '',
+                                            [stepKey]: stepResult.comment || '',
                                           }));
                                           setStepCommentsOpen((prev) => ({
                                             ...prev,
-                                            [step.stepNumber]: true,
+                                            [stepKey]: true,
                                           }));
                                         }}
                                         className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded cursor-pointer transition-colors"
@@ -1010,7 +1140,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => handleDeleteStepComment(step.stepNumber)}
+                                        onClick={() => handleDeleteStepComment(stepNumber)}
                                         className="p-1 hover:bg-rose-100 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded cursor-pointer transition-colors"
                                         title="Delete comment"
                                       >
@@ -1146,18 +1276,23 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                 )}
 
                                 {/* Step Comment Input Box */}
-                                {stepCommentsOpen[step.stepNumber] && (
+                                {stepCommentsOpen[stepKey] && (
                                   <div className="mt-2 p-2.5 bg-slate-50 dark:bg-slate-900/80 border border-indigo-200 dark:border-indigo-800/60 rounded-lg space-y-2">
                                     <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300 font-semibold">
-                                      <span>Add / Edit Step Comment (Бележка към стъпка)</span>
+                                      <span>Add / Edit Step Comment (Бележка към стъпка #{stepNumber})</span>
                                       <button
                                         type="button"
-                                        onClick={() =>
+                                        onClick={() => {
                                           setStepCommentsOpen((prev) => ({
                                             ...prev,
-                                            [step.stepNumber]: false,
-                                          }))
-                                        }
+                                            [stepKey]: false,
+                                          }));
+                                          setStepCommentDraft((prev) => {
+                                            const copy = { ...prev };
+                                            delete copy[stepKey];
+                                            return copy;
+                                          });
+                                        }}
                                         className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
                                       >
                                         <X className="w-3.5 h-3.5" />
@@ -1165,14 +1300,14 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                     </div>
                                     <textarea
                                       value={
-                                        stepCommentDraft[step.stepNumber] !== undefined
-                                          ? stepCommentDraft[step.stepNumber]
+                                        stepCommentDraft[stepKey] !== undefined
+                                          ? stepCommentDraft[stepKey]
                                           : stepResult?.comment || ''
                                       }
                                       onChange={(e) =>
                                         setStepCommentDraft((prev) => ({
                                           ...prev,
-                                          [step.stepNumber]: e.target.value,
+                                          [stepKey]: e.target.value,
                                         }))
                                       }
                                       rows={2}
@@ -1183,16 +1318,26 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          const text =
-                                            stepCommentDraft[step.stepNumber] ??
-                                            stepResult?.comment ??
-                                            '';
-                                          handleStepComment(step.stepNumber, text);
+                                          const text = (
+                                            stepCommentDraft[stepKey] !== undefined
+                                              ? stepCommentDraft[stepKey]
+                                              : stepResult?.comment || ''
+                                          ).trim();
+                                          handleStepComment(stepNumber, text);
+                                          setStepCommentDraft((prev) => {
+                                            const copy = { ...prev };
+                                            delete copy[stepKey];
+                                            return copy;
+                                          });
                                           setStepCommentsOpen((prev) => ({
                                             ...prev,
-                                            [step.stepNumber]: false,
+                                            [stepKey]: false,
                                           }));
-                                          setToastMessage(`Step ${step.stepNumber} comment saved!`);
+                                          setToastMessage(
+                                            text
+                                              ? `Step ${stepNumber} comment saved!`
+                                              : `Step ${stepNumber} comment cleared!`
+                                          );
                                           setTimeout(() => setToastMessage(null), 2500);
                                         }}
                                         className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[11px] font-semibold cursor-pointer"
@@ -1219,7 +1364,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                   className="hidden"
                                   onChange={(e) => {
                                     const f = e.target.files?.[0];
-                                    if (f) handleAddStepScreenshot(step.stepNumber, f);
+                                    if (f) handleAddStepScreenshot(stepNumber, f);
                                     e.target.value = '';
                                   }}
                                 />
@@ -1228,9 +1373,9 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                               {/* File Defect for this specific step (Repeatable anytime) */}
                               <button
                                 type="button"
-                                onClick={() => handleFileDefectForStep(step.stepNumber)}
+                                onClick={() => handleFileDefectForStep(stepNumber)}
                                 className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                                title={`Log defect for Step ${step.stepNumber} (File Defect)`}
+                                title={`Log defect for Step ${stepNumber} (File Defect)`}
                               >
                                 <Bug className="w-3.5 h-3.5" />
                               </button>
@@ -1238,12 +1383,25 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                               {/* Step Note toggle button */}
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const willOpen = !stepCommentsOpen[stepKey];
+                                  if (willOpen) {
+                                    setStepCommentDraft((prev) => ({
+                                      ...prev,
+                                      [stepKey]: stepResult?.comment || '',
+                                    }));
+                                  } else {
+                                    setStepCommentDraft((prev) => {
+                                      const copy = { ...prev };
+                                      delete copy[stepKey];
+                                      return copy;
+                                    });
+                                  }
                                   setStepCommentsOpen((prev) => ({
                                     ...prev,
-                                    [step.stepNumber]: !prev[step.stepNumber],
-                                  }))
-                                }
+                                    [stepKey]: willOpen,
+                                  }));
+                                }}
                                 className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                                   stepResult?.comment
                                     ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400'
@@ -1258,7 +1416,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                 <MessageSquare className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => handleStepStatus(step.stepNumber, 'passed')}
+                                onClick={() => handleStepStatus(stepNumber, 'passed')}
                                 className={`p-1.5 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-slate-400 dark:text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors cursor-pointer ${
                                   currentStatus === 'passed'
                                     ? 'bg-emerald-600 text-white hover:bg-emerald-600 dark:hover:bg-emerald-600'
@@ -1269,7 +1427,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                 <CheckCircle2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleStepStatus(step.stepNumber, 'failed')}
+                                onClick={() => handleStepStatus(stepNumber, 'failed')}
                                 className={`p-1.5 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/60 text-slate-400 dark:text-slate-500 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer ${
                                   currentStatus === 'failed'
                                     ? 'bg-rose-600 text-white hover:bg-rose-600 dark:hover:bg-rose-600'
@@ -1280,7 +1438,7 @@ export const LiveTestRunnerModal: React.FC<LiveTestRunnerModalProps> = ({
                                 <XCircle className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleStepStatus(step.stepNumber, 'blocked')}
+                                onClick={() => handleStepStatus(stepNumber, 'blocked')}
                                 className={`p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/60 text-slate-400 dark:text-slate-500 hover:text-amber-700 dark:hover:text-amber-300 transition-colors cursor-pointer ${
                                   currentStatus === 'blocked'
                                     ? 'bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-600'
