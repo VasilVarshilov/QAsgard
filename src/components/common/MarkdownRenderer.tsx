@@ -10,6 +10,7 @@ interface MarkdownRendererProps {
 export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   content,
   className = '',
+  isDark = false,
 }) => {
   const [copiedBlockId, setCopiedBlockId] = useState<string | null>(null);
 
@@ -187,9 +188,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     if (trimmed.startsWith('### ')) {
       const headingText = trimmed.replace('### ', '');
       blocks.push(
-        <h3 key={i} className="text-sm font-bold text-slate-900 dark:text-white mt-4 mb-2 flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-1">
+        <h3 key={i} className={`text-sm font-bold mt-4 mb-2 flex items-center gap-2 border-b pb-1 ${isDark ? 'text-white border-slate-700/80' : 'text-slate-900 dark:text-white border-slate-200 dark:border-slate-800'}`}>
           <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
-          <span>{renderInlineFormatted(headingText)}</span>
+          <span>{renderInlineFormatted(headingText, isDark)}</span>
         </h3>
       );
       continue;
@@ -198,8 +199,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     if (trimmed.startsWith('## ')) {
       const headingText = trimmed.replace('## ', '');
       blocks.push(
-        <h2 key={i} className="text-base font-extrabold text-slate-900 dark:text-white mt-5 mb-2.5 pb-1.5 border-b-2 border-indigo-500/40">
-          {renderInlineFormatted(headingText)}
+        <h2 key={i} className={`text-base font-extrabold mt-5 mb-2.5 pb-1.5 border-b-2 border-indigo-500/40 ${isDark ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+          {renderInlineFormatted(headingText, isDark)}
         </h2>
       );
       continue;
@@ -208,8 +209,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     if (trimmed.startsWith('# ')) {
       const headingText = trimmed.replace('# ', '');
       blocks.push(
-        <h1 key={i} className="text-lg font-black text-slate-900 dark:text-white mt-5 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
-          {renderInlineFormatted(headingText)}
+        <h1 key={i} className={`text-lg font-black mt-5 mb-3 pb-2 border-b ${isDark ? 'text-white border-slate-700' : 'text-slate-900 dark:text-white border-slate-200 dark:border-slate-700'}`}>
+          {renderInlineFormatted(headingText, isDark)}
         </h1>
       );
       continue;
@@ -218,18 +219,18 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     // Divider line
     if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
       blocks.push(
-        <hr key={i} className="my-4 border-t border-slate-200 dark:border-slate-700/80" />
+        <hr key={i} className={`my-4 border-t ${isDark ? 'border-slate-700' : 'border-slate-200 dark:border-slate-700/80'}`} />
       );
       continue;
     }
 
-    // Bullet points
-    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      const itemText = trimmed.replace(/^[-*]\s+/, '');
+    // Bullet points (support standard -, *, and unicode •)
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ') || trimmed.startsWith('•\t')) {
+      const itemText = trimmed.replace(/^[-*•]\s*/, '');
       blocks.push(
-        <div key={i} className="flex items-start gap-2.5 my-1 text-slate-700 dark:text-slate-300 leading-relaxed pl-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 mt-1.5 shrink-0" />
-          <div className="flex-1">{renderInlineFormatted(itemText)}</div>
+        <div key={i} className={`flex items-start gap-2.5 my-1 leading-relaxed pl-1 ${isDark ? 'text-slate-200' : 'text-slate-700 dark:text-slate-300'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isDark ? 'bg-indigo-400' : 'bg-indigo-500 dark:bg-indigo-400'}`} />
+          <div className="flex-1">{renderInlineFormatted(itemText, isDark)}</div>
         </div>
       );
       continue;
@@ -239,11 +240,11 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
     if (numMatch) {
       blocks.push(
-        <div key={i} className="flex items-start gap-2 my-1 text-slate-700 dark:text-slate-300 leading-relaxed pl-1">
-          <span className="font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-400 px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/40 shrink-0">
+        <div key={i} className={`flex items-start gap-2 my-1 leading-relaxed pl-1 ${isDark ? 'text-slate-200' : 'text-slate-700 dark:text-slate-300'}`}>
+          <span className="font-mono text-[11px] font-bold text-indigo-400 px-1.5 py-0.2 rounded bg-indigo-950/50 border border-indigo-800/40 shrink-0">
             {numMatch[1]}
           </span>
-          <div className="flex-1">{renderInlineFormatted(numMatch[2])}</div>
+          <div className="flex-1">{renderInlineFormatted(numMatch[2], isDark)}</div>
         </div>
       );
       continue;
@@ -257,8 +258,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
     // Standard paragraph
     blocks.push(
-      <p key={i} className="text-slate-700 dark:text-slate-300 leading-relaxed my-1">
-        {renderInlineFormatted(trimmed)}
+      <p key={i} className={`leading-relaxed my-1 ${isDark ? 'text-slate-200' : 'text-slate-700 dark:text-slate-300'}`}>
+        {renderInlineFormatted(trimmed, isDark)}
       </p>
     );
   }
@@ -273,7 +274,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 /**
  * Parses inline formatting: **bold**, `code`, [TAGS], etc.
  */
-function renderInlineFormatted(text: string): React.ReactNode {
+function renderInlineFormatted(text: string, isDark: boolean = false): React.ReactNode {
   if (!text) return null;
 
   // Split by inline code `...`
@@ -285,7 +286,11 @@ function renderInlineFormatted(text: string): React.ReactNode {
       return (
         <code
           key={pIdx}
-          className="px-1.5 py-0.5 mx-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 border border-slate-200 dark:border-slate-700"
+          className={`px-1.5 py-0.5 mx-0.5 rounded text-[11px] font-mono font-bold ${
+            isDark
+              ? 'bg-slate-800 text-indigo-300 border border-slate-700'
+              : 'bg-slate-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 border border-slate-200 dark:border-slate-700'
+          }`}
         >
           {codeContent}
         </code>
@@ -300,7 +305,7 @@ function renderInlineFormatted(text: string): React.ReactNode {
           if (bPart.startsWith('**') && bPart.endsWith('**')) {
             const boldText = bPart.slice(2, -2);
             return (
-              <strong key={bIdx} className="font-bold text-slate-900 dark:text-white">
+              <strong key={bIdx} className={`font-bold ${isDark ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                 {renderBadges(boldText)}
               </strong>
             );

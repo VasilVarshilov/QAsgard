@@ -36,6 +36,7 @@ interface GeminiCallParams {
   jsonMode?: boolean;
   preferredModel?: string;
   temperature?: number;
+  timeoutMs?: number;
 }
 
 async function callGeminiWithResilience(params: GeminiCallParams): Promise<{ text: string; model: string }> {
@@ -53,6 +54,8 @@ async function callGeminiWithResilience(params: GeminiCallParams): Promise<{ tex
 
   const models = Array.from(new Set(candidateModels));
   let lastErr: any = null;
+
+  const timeoutMs = params.timeoutMs ?? 25000;
 
   for (const model of models) {
     try {
@@ -74,7 +77,7 @@ async function callGeminiWithResilience(params: GeminiCallParams): Promise<{ tex
       });
 
       const timeoutCall = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini API request timeout (3500ms)')), 3500)
+        setTimeout(() => reject(new Error(`Gemini API request timeout (${timeoutMs}ms)`)), timeoutMs)
       );
 
       const response = await Promise.race([generateCall, timeoutCall]);

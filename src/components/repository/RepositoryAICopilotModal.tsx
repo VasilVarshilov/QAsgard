@@ -103,7 +103,7 @@ User Instructions: ${customInstructions || 'Comprehensive verification covering 
       let receivedCases: any[] = [];
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 28000);
         const res = await fetch('/api/ai/generate-test-cases', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -336,28 +336,19 @@ User Instructions: ${customInstructions || 'Comprehensive verification covering 
     const toImport = generatedResults.filter((c) => c.id && selectedCaseIds.has(c.id));
     if (toImport.length > 0) {
       onImportGeneratedCases(toImport);
-      setGeneratedResults((prev) => prev.filter((c) => !c.id || !selectedCaseIds.has(c.id)));
-      setSelectedCaseIds(new Set());
-      if (toImport.length === generatedResults.length) {
-        onClose();
-      }
+      onClose();
     }
   };
 
   const handleImportAll = () => {
-    if (generatedResults.length > 0) {
-      onImportGeneratedCases(generatedResults);
-      setGeneratedResults([]);
-      setSelectedCaseIds(new Set());
-      onClose();
-    }
+    handleImportSelected();
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-100">
-      <div className="bg-[#181926] border border-[#2e3146] rounded-2xl max-w-3xl w-full p-6 space-y-4 shadow-2xl text-xs flex flex-col max-h-[90vh]">
+      <div className="dark bg-[#181926] border border-[#2e3146] rounded-2xl max-w-3xl w-full p-6 space-y-4 shadow-2xl text-xs flex flex-col max-h-[90vh] text-slate-100">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-[#262838] shrink-0">
           <div className="flex items-center gap-2.5">
@@ -422,8 +413,9 @@ User Instructions: ${customInstructions || 'Comprehensive verification covering 
             <select
               value={caseCount}
               onChange={(e) => setCaseCount(Number(e.target.value))}
-              className="bg-[#13141f] border border-[#2d3044] rounded-xl px-3 text-xs text-slate-300 focus:outline-none"
+              className="bg-[#13141f] border border-[#2d3044] rounded-xl px-3 text-xs text-slate-300 focus:outline-none cursor-pointer"
             >
+              <option value={1}>1 Case</option>
               <option value={3}>3 Cases</option>
               <option value={5}>5 Cases</option>
               <option value={10}>10 Cases</option>
@@ -467,14 +459,14 @@ User Instructions: ${customInstructions || 'Comprehensive verification covering 
           )}
 
           {!isLoading && analysisText && (
-            <div className="p-3 bg-[#1a1c2b] border border-[#2e3146] rounded-xl">
-              <MarkdownRenderer content={analysisText} className="text-xs text-slate-300" />
+            <div className="p-3.5 bg-[#1b1c2c] border border-[#373a54] rounded-xl text-slate-100 shadow-inner">
+              <MarkdownRenderer content={analysisText} isDark={true} className="text-xs text-slate-100 leading-relaxed" />
             </div>
           )}
 
           {!isLoading && generatedResults.length > 0 && (
             <div className="space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-white px-2 py-2 bg-[#1a1c2b] rounded-xl border border-[#2e3146] flex-wrap gap-2">
+              <div className="flex items-center justify-between text-xs font-bold text-white px-2.5 py-2 bg-[#1a1c2b] rounded-xl border border-[#2e3146] flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white select-none">
                     <input
@@ -491,20 +483,19 @@ User Instructions: ${customInstructions || 'Comprehensive verification covering 
                   <button
                     onClick={handleImportSelected}
                     disabled={selectedCaseIds.size === 0}
-                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                    title="Import only selected test cases into suite"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5" />
-                    <span>Import Selected ({selectedCaseIds.size})</span>
-                  </button>
-
-                  <button
-                    onClick={handleImportAll}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                    title="Import all generated test cases into suite"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                    title={
+                      selectedCaseIds.size === generatedResults.length
+                        ? 'Import all generated test cases into suite'
+                        : `Import ${selectedCaseIds.size} marked test cases into suite`
+                    }
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>Import All ({generatedResults.length})</span>
+                    <span>
+                      {selectedCaseIds.size === generatedResults.length
+                        ? `Import All (${selectedCaseIds.size})`
+                        : `Import (${selectedCaseIds.size})`}
+                    </span>
                   </button>
                 </div>
               </div>

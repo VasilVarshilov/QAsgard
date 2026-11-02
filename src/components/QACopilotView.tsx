@@ -24,6 +24,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  Download,
 } from 'lucide-react';
 import { Project, TestCase, TestSuite, Defect, User } from '../types';
 import { MarkdownRenderer } from './common/MarkdownRenderer';
@@ -86,14 +87,26 @@ What would you like to review or generate?`,
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isInitialMount = useRef(true);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     scrollToBottom();
   }, [messages, isLoading]);
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // Handle ESC key to exit full screen or close full screen modal
   useEffect(() => {
@@ -325,25 +338,86 @@ What would you like to review or generate?`,
     }
   };
 
+  const handleSaveAsTestCase = (text: string) => {
+    if (!onAddTestCase) return;
+    const lines = text.split('\n').filter((l) => l.trim().length > 0);
+    const titleLine = lines.find((l) => l.startsWith('#') || l.includes('TC-') || l.includes('Test Case'));
+    const cleanTitle = titleLine
+      ? titleLine.replace(/^[#*\s-]+/, '').replace(/\*\*/g, '').trim()
+      : `QA Copilot Test Case - ${new Date().toLocaleDateString()}`;
+
+    const stepLines = lines.filter((l) => /^\d+\.|\bStep\s*\d+/i.test(l));
+    const steps = stepLines.slice(0, 10).map((s, idx) => ({
+      stepNumber: idx + 1,
+      action: s.replace(/^\d+\.|\bStep\s*\d+[:.-]?\s*/i, '').trim(),
+      expectedResult: 'Verify expected outcome conforms to required criteria.',
+    }));
+
+    const targetSuite = activeSuite || testSuites[0];
+    onAddTestCase({
+      title: cleanTitle.slice(0, 120),
+      description: text.slice(0, 600),
+      suiteId: targetSuite?.id || 'suite-core',
+      suiteName: targetSuite?.name || 'General Suite',
+      priority: 'high',
+      severity: 'normal',
+      type: 'functional',
+      layer: 'system',
+      status: 'draft',
+      automationStatus: 'to_be_automated',
+      steps: steps.length > 0 ? steps : [
+        {
+          stepNumber: 1,
+          action: 'Execute test verification as analyzed by QA Copilot',
+          expectedResult: 'System functions in accordance with specifications',
+        },
+      ],
+      tags: ['ai-generated', 'qa-copilot'],
+    });
+
+    showToast(`Тест кейсът беше успешно запазен в Repository!`);
+  };
+
+  const handleExportChat = () => {
+    const formatted = messages
+      .map((m) => `### ${m.role === 'model' ? 'QA Copilot' : 'User'} (${m.timestamp})\n\n${m.text}`)
+      .join('\n\n---\n\n');
+    const blob = new Blob([formatted], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `QA_Copilot_Chat_${project.key || 'Project'}_${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Чатът беше свален като Markdown файл!');
+  };
+
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 h-[calc(100vh-5rem)] flex flex-col">
+    <div className="p-3 sm:p-5 lg:p-6 max-w-7xl mx-auto space-y-3 flex flex-col flex-1 min-h-[calc(100vh-5.5rem)]">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-18 right-6 z-50 bg-slate-900 dark:bg-slate-800 text-white px-4 py-2.5 rounded-xl shadow-xl border border-slate-700 text-xs flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="font-medium">{toastMessage}</span>
+        </div>
+      )}
+
       {/* Top Banner / Studio Header */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 sm:p-3.5 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white flex items-center justify-center shadow-md">
-            <Sparkles className="w-5 h-5 text-amber-200" />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white flex items-center justify-center shadow-md shrink-0">
+            <Sparkles className="w-4 h-4 text-amber-200" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-slate-900 dark:text-white">QA Copilot</h1>
+              <h1 className="text-sm font-bold text-slate-900 dark:text-white">QA Copilot</h1>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 flex items-center gap-1">
                 <Bot className="w-3 h-3" />
                 Senior QA Architect
               </span>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Context-Aware AI Assistant for Test Authoring, Review, Coverage Gap Detection &amp;
-              Automation
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Context-Aware AI Assistant for Test Authoring, Review, Coverage Gap Detection &amp; Automation
             </p>
           </div>
         </div>
@@ -356,7 +430,7 @@ What would you like to review or generate?`,
             <select
               value={selectedSuiteId}
               onChange={(e) => handleSuiteChange(e.target.value)}
-              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer max-w-[150px] truncate"
+              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer max-w-[150px] truncate text-xs"
               title="Select Suite Context"
             >
               <option value="all">All Suites ({testCases.length})</option>
@@ -369,7 +443,7 @@ What would you like to review or generate?`,
           </div>
 
           {/* Active Case Context */}
-          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 max-w-[240px]">
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 max-w-[220px]">
             <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <select
               value={selectedCaseId}
@@ -392,20 +466,18 @@ What would you like to review or generate?`,
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
+              className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer text-xs"
             >
               <option value="gemini-3.5-flash">gemini-3.5-flash (General)</option>
               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (Fast)</option>
-              <option value="gemini-3.1-pro-preview">
-                gemini-3.1-pro-preview (Deep Reasoning)
-              </option>
+              <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (Deep Reasoning)</option>
             </select>
           </div>
 
           <button
             onClick={handleClearHistory}
             className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Clear Chat History"
+            title="Изчисти историята на чата (Clear Chat)"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -416,40 +488,54 @@ What would you like to review or generate?`,
       <div
         className={
           isFullScreen
-            ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 flex flex-col h-screen w-screen overflow-hidden animate-in fade-in zoom-in-95 duration-100'
-            : 'flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col min-h-0'
+            ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 flex flex-col h-screen w-screen overflow-hidden animate-in fade-in duration-150'
+            : 'flex-1 min-h-[500px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col relative'
         }
       >
         {/* Dedicated Window Header for Responses & Controls */}
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between shrink-0 select-none">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700/80 flex items-center justify-between shrink-0 select-none flex-wrap gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 shrink-0">
               {isFullScreen ? 'QA Copilot • Прозорец с отговори (Цял екран)' : 'Прозорец с отговори'}
             </span>
             {activeCase ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono truncate max-w-[180px] sm:max-w-xs">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-mono truncate max-w-[200px] sm:max-w-sm">
                 [{activeCase.key}] {activeCase.title}
               </span>
             ) : activeSuite ? (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 truncate max-w-[180px]">
                 {activeSuite.name}
               </span>
             ) : (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                 {project.name}
               </span>
             )}
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden md:inline">
+              ({messages.length} {messages.length === 1 ? 'съобщение' : 'съобщения'})
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportChat}
+              className="px-2.5 py-1 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 shadow-2xs"
+              title="Свали историята като Markdown файл"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">Свали чата</span>
+            </button>
+
             {/* Toggle Full Screen for the Responses Window */}
             <button
+              type="button"
               onClick={() => setIsFullScreen((prev) => !prev)}
-              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
                 isFullScreen
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm hover:bg-indigo-700'
-                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-2xs'
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
               title={isFullScreen ? 'Exit Full Screen (ESC) / Изход от цял екран' : 'Full Screen Responses / Отвори прозореца на отговорите на цял екран'}
             >
@@ -465,16 +551,10 @@ What would you like to review or generate?`,
                 </>
               )}
             </button>
-
-            <button
-              onClick={handleClearHistory}
-              className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-              title="Clear Chat History"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
+
+        {/* Messages Body */}
         <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6">
           {messages.map((msg) => {
             const isModel = msg.role === 'model';
@@ -485,7 +565,7 @@ What would you like to review or generate?`,
               >
                 {/* Avatar */}
                 <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-white font-bold text-xs shadow-2xs ${
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-white font-bold text-xs shadow-2xs ${
                     isModel
                       ? 'bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500'
                       : 'bg-slate-800 dark:bg-slate-700'
@@ -496,44 +576,57 @@ What would you like to review or generate?`,
 
                 {/* Message Bubble */}
                 <div
-                  className={`max-w-3xl rounded-2xl p-4 sm:p-5 text-xs space-y-2 leading-relaxed shadow-2xs ${
+                  className={`rounded-2xl p-4 sm:p-5 text-xs sm:text-sm space-y-3 leading-relaxed shadow-xs ${
                     isModel
-                      ? 'bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200'
-                      : 'bg-indigo-600 text-white'
+                      ? 'w-full max-w-4xl lg:max-w-5xl bg-slate-50/90 dark:bg-slate-800/80 border border-slate-200/90 dark:border-slate-700/80 text-slate-800 dark:text-slate-100'
+                      : 'max-w-2xl bg-indigo-600 text-white shadow-sm'
                   }`}
                 >
                   {/* Message Header */}
                   <div
-                    className={`flex items-center justify-between gap-3 text-[10px] pb-1 border-b ${
+                    className={`flex items-center justify-between gap-3 text-[11px] pb-2 border-b ${
                       isModel
-                        ? 'border-slate-200 dark:border-slate-700 text-slate-400'
-                        : 'border-indigo-500 text-indigo-200'
+                        ? 'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                        : 'border-indigo-500 text-indigo-100'
                     }`}
                   >
-                    <span className="font-semibold">{isModel ? 'QA Copilot' : 'You'}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {isModel ? 'QA Copilot' : 'Вие / You'}
+                      </span>
+                      {isModel && (
+                        <span className="text-[10px] px-2 py-0.2 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-full font-semibold border border-indigo-200/60 dark:border-indigo-800/60">
+                          Senior QA Architect
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {msg.modelUsed && (
-                        <span className="font-mono text-[9px]">[{msg.modelUsed}]</span>
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                          {msg.modelUsed}
+                        </span>
                       )}
                       <span>{msg.timestamp}</span>
                       {isModel && (
                         <div className="flex items-center gap-1.5 ml-1">
                           <button
+                            type="button"
                             onClick={() => setFullscreenMessage(msg)}
-                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5 rounded cursor-pointer transition-colors"
-                            title="Open this response in Full Screen Modal / Разпъни отговора на цял екран"
+                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                            title="Разпъни този отговор в отделен голям екран"
                           >
-                            <Maximize2 className="w-3 h-3" />
+                            <Maximize2 className="w-3.5 h-3.5" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => copyToClipboard(msg.text, msg.id)}
-                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-0.5 rounded cursor-pointer transition-colors"
-                            title="Copy to clipboard"
+                            className="hover:text-indigo-600 dark:hover:text-indigo-400 p-1 rounded hover:bg-slate-200/70 dark:hover:bg-slate-700 cursor-pointer transition-colors"
+                            title="Копирай отговора"
                           >
                             {copiedId === msg.id ? (
-                              <Check className="w-3 h-3 text-emerald-500" />
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
                             ) : (
-                              <Copy className="w-3 h-3" />
+                              <Copy className="w-3.5 h-3.5" />
                             )}
                           </button>
                         </div>
@@ -543,35 +636,55 @@ What would you like to review or generate?`,
 
                   {/* Body Content */}
                   {isModel ? (
-                    <MarkdownRenderer content={msg.text} className="text-xs sm:text-[13px]" />
+                    <div className="max-w-none">
+                      <MarkdownRenderer content={msg.text} className="text-xs sm:text-[13px] leading-relaxed" />
+                    </div>
                   ) : (
                     <div className="whitespace-pre-wrap font-sans text-xs sm:text-[13px] leading-relaxed">
                       {msg.text}
                     </div>
                   )}
 
+                  {/* Action Toolbar on Assistant Messages */}
                   {isModel && (
-                    <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-end">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(msg.text, msg.id)}
-                        className="px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                        title="Copy response to clipboard"
-                      >
-                        {copiedId === msg.id ? (
-                          <>
-                            <Check className="w-3 h-3 text-emerald-500" />
-                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                              Copied to Clipboard!
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3 text-indigo-500" />
-                            <span>Copy for Direct Paste</span>
-                          </>
+                    <div className="pt-2.5 border-t border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between flex-wrap gap-2">
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Готово за преглед, експорт и автоматизация</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {onAddTestCase && (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveAsTestCase(msg.text)}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/70 bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-800 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                            title="Запази този анализ или генерирани тестови стъпки като кейс в Repository"
+                          >
+                            <PlusCircle className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Запази в Repository</span>
+                          </button>
                         )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(msg.text, msg.id)}
+                          className="px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                          title="Копирай целия отговор за поставяне"
+                        >
+                          {copiedId === msg.id ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-500" />
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                Копирано!
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3 text-indigo-500" />
+                              <span>Копирай отговора</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
