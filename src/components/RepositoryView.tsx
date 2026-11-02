@@ -571,15 +571,28 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
   const suiteSections = useMemo(() => {
     if (viewGrouping === 'flat') return null;
 
+    const sortSuites = (list: TestSuite[]) => {
+      return [...list].sort((a, b) => {
+        if (typeof a.order === 'number' && typeof b.order === 'number') {
+          if (a.order !== b.order) return a.order - b.order;
+        } else if (typeof a.order === 'number') {
+          return -1;
+        } else if (typeof b.order === 'number') {
+          return 1;
+        }
+        return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+      });
+    };
+
     // Determine candidate suites to display as sections
     let candidateSuites: TestSuite[] = [];
     if (!selectedSuiteId) {
       // In All Cases: preserve root -> child tree order
-      const rootSuites = projectSuites.filter((s) => !s.parentId);
+      const rootSuites = sortSuites(projectSuites.filter((s) => !s.parentId));
       const orderList: TestSuite[] = [];
       const appendWithChildren = (suite: TestSuite) => {
         orderList.push(suite);
-        const children = projectSuites.filter((s) => s.parentId === suite.id);
+        const children = sortSuites(projectSuites.filter((s) => s.parentId === suite.id));
         children.forEach(appendWithChildren);
       };
       rootSuites.forEach(appendWithChildren);
@@ -589,7 +602,7 @@ export const RepositoryView: React.FC<RepositoryViewProps> = ({
       if (!active) return null;
       const orderList: TestSuite[] = [active];
       const appendWithChildren = (parentSuite: TestSuite) => {
-        const children = projectSuites.filter((s) => s.parentId === parentSuite.id);
+        const children = sortSuites(projectSuites.filter((s) => s.parentId === parentSuite.id));
         children.forEach((c) => {
           orderList.push(c);
           appendWithChildren(c);

@@ -878,9 +878,18 @@ export default function App() {
       const primaryRepoId = newRepos.find((r) => r.isDefault)?.id || newRepos[0].id;
 
       const suiteIdMap = new Map<string, string>();
-      const newSuites: TestSuite[] = (importedData.suites || []).map((s, idx) => {
-        const newSuiteId = `suite-${Date.now()}-${idx}`;
-        if (s.id) suiteIdMap.set(s.id, newSuiteId);
+      const suiteNameMap = new Map<string, string>();
+
+      // Preserve hierarchical structure, parent relationships, and explicit tree ordering
+      const rawSuites = (importedData.suites || []).map((s: any, idx: number) => ({
+        ...s,
+        rawOrder: typeof s.order === 'number' ? s.order : (idx + 1) * 10,
+      }));
+
+      const newSuites: TestSuite[] = rawSuites.map((s: any, idx: number) => {
+        const newSuiteId = `suite-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (s.id) suiteIdMap.set(String(s.id), newSuiteId);
+        if (s.name) suiteNameMap.set(String(s.name).trim().toLowerCase(), newSuiteId);
         const mappedRepoId = (s.repositoryId && repoIdMap.get(s.repositoryId)) || primaryRepoId;
         return {
           id: newSuiteId,
@@ -889,13 +898,19 @@ export default function App() {
           name: s.name || `Suite ${idx + 1}`,
           description: s.description || '',
           parentId: null,
+          order: s.rawOrder,
           caseCount: 0,
         };
       });
 
-      (importedData.suites || []).forEach((oldS, idx) => {
-        if (oldS.parentId && suiteIdMap.has(oldS.parentId)) {
-          newSuites[idx].parentId = suiteIdMap.get(oldS.parentId) || null;
+      // Link parentId references maintaining exact tree hierarchy
+      rawSuites.forEach((oldS: any, idx: number) => {
+        if (oldS.parentId) {
+          const mappedParentId =
+            suiteIdMap.get(String(oldS.parentId)) ||
+            suiteNameMap.get(String(oldS.parentId).trim().toLowerCase()) ||
+            null;
+          newSuites[idx].parentId = mappedParentId;
         }
       });
 
@@ -906,18 +921,33 @@ export default function App() {
           repositoryId: primaryRepoId,
           name: `${newProject.name} Core Suite`,
           description: 'Default test suite',
+          order: 10,
           caseCount: importedData.testCases?.length || 0,
         });
       }
 
       const caseIdMap = new Map<string, string>();
       const newCases: TestCase[] = (importedData.testCases || []).map((tc, idx) => {
-        const newCaseId = `case-${Date.now()}-${idx}`;
-        if (tc.id) caseIdMap.set(tc.id, newCaseId);
-        const mappedSuiteId =
-          (tc.suiteId && suiteIdMap.get(tc.suiteId)) || newSuites[0]?.id || 'default';
-        const mappedRepoId = (tc.repositoryId && repoIdMap.get(tc.repositoryId)) || primaryRepoId;
+        const newCaseId = `case-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (tc.id) caseIdMap.set(String(tc.id), newCaseId);
+
+        let mappedSuiteId: string | null = null;
+        if (tc.suiteId && suiteIdMap.has(String(tc.suiteId))) {
+          mappedSuiteId = suiteIdMap.get(String(tc.suiteId))!;
+        } else if (tc.suiteName && suiteNameMap.has(String(tc.suiteName).trim().toLowerCase())) {
+          mappedSuiteId = suiteNameMap.get(String(tc.suiteName).trim().toLowerCase())!;
+        }
+
+        if (!mappedSuiteId) {
+          mappedSuiteId = newSuites[0]?.id || 'default';
+        }
+
         const targetSuite = newSuites.find((s) => s.id === mappedSuiteId);
+        const mappedRepoId =
+          (tc.repositoryId && repoIdMap.get(tc.repositoryId)) ||
+          targetSuite?.repositoryId ||
+          primaryRepoId;
+
         return {
           id: newCaseId,
           projectId: newProjectId,
@@ -947,6 +977,11 @@ export default function App() {
           createdAt: tc.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+      });
+
+      // Synchronize exact caseCount per suite
+      newSuites.forEach((s) => {
+        s.caseCount = newCases.filter((c) => c.suiteId === s.id).length;
       });
 
       // Restore Test Runs if present
@@ -1089,9 +1124,13 @@ export default function App() {
       };
 
       const suiteIdMap = new Map<string, string>();
-      const newSuites: TestSuite[] = (importedData.suites || []).map((s, idx) => {
-        const newSuiteId = `suite-${Date.now()}-${idx}`;
-        if (s.id) suiteIdMap.set(s.id, newSuiteId);
+      const suiteNameMap = new Map<string, string>();
+      const rawSuites = Array.isArray(importedData.suites) ? importedData.suites : [];
+      const newSuites: TestSuite[] = rawSuites.map((s: any, idx: number) => {
+        const newSuiteId = `suite-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (s.id) suiteIdMap.set(String(s.id), newSuiteId);
+        if (s.name) suiteNameMap.set(String(s.name).trim().toLowerCase(), newSuiteId);
+        const rawOrder = typeof s.order === 'number' ? s.order : (idx + 1) * 10;
         return {
           id: newSuiteId,
           projectId: targetProjectId,
@@ -1099,13 +1138,19 @@ export default function App() {
           name: s.name || `Suite ${idx + 1}`,
           description: s.description || '',
           parentId: null,
+          order: rawOrder,
           caseCount: 0,
         };
       });
 
-      (importedData.suites || []).forEach((oldS, idx) => {
-        if (oldS.parentId && suiteIdMap.has(oldS.parentId)) {
-          newSuites[idx].parentId = suiteIdMap.get(oldS.parentId) || null;
+      // Link parentId references maintaining exact tree hierarchy
+      rawSuites.forEach((oldS: any, idx: number) => {
+        if (oldS.parentId) {
+          const mappedParentId =
+            suiteIdMap.get(String(oldS.parentId)) ||
+            suiteNameMap.get(String(oldS.parentId).trim().toLowerCase()) ||
+            null;
+          newSuites[idx].parentId = mappedParentId;
         }
       });
 
@@ -1116,16 +1161,30 @@ export default function App() {
           repositoryId: newRepoId,
           name: `${repoName} Core Suite`,
           description: 'Default test suite',
+          order: 10,
           caseCount: importedData.testCases?.length || 0,
         });
       }
 
+      const caseIdMap = new Map<string, string>();
       const newCases: TestCase[] = (importedData.testCases || []).map((tc, idx) => {
-        const mappedSuiteId =
-          (tc.suiteId && suiteIdMap.get(tc.suiteId)) || newSuites[0]?.id || 'default';
+        const newCaseId = `case-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (tc.id) caseIdMap.set(String(tc.id), newCaseId);
+
+        let mappedSuiteId: string | null = null;
+        if (tc.suiteId && suiteIdMap.has(String(tc.suiteId))) {
+          mappedSuiteId = suiteIdMap.get(String(tc.suiteId))!;
+        } else if (tc.suiteName && suiteNameMap.has(String(tc.suiteName).trim().toLowerCase())) {
+          mappedSuiteId = suiteNameMap.get(String(tc.suiteName).trim().toLowerCase())!;
+        }
+
+        if (!mappedSuiteId) {
+          mappedSuiteId = newSuites[0]?.id || 'default';
+        }
+
         const targetSuite = newSuites.find((s) => s.id === mappedSuiteId);
         return {
-          id: `case-${Date.now()}-${idx}`,
+          id: newCaseId,
           projectId: targetProjectId,
           repositoryId: newRepoId,
           key:
@@ -1150,9 +1209,14 @@ export default function App() {
           attachments: tc.attachments || [],
           comments: tc.comments || [],
           customFields: Array.isArray(tc.customFields) ? tc.customFields : [],
-          createdAt: new Date().toISOString(),
+          createdAt: tc.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+      });
+
+      // Synchronize exact caseCount per suite
+      newSuites.forEach((s) => {
+        s.caseCount = newCases.filter((c) => c.suiteId === s.id).length;
       });
 
       // Update repositories: add the new repository under target project
@@ -1233,10 +1297,17 @@ export default function App() {
       const targetRepoId =
         selectedRepositoryId || projectRepositories[0]?.id || `repo-${targetProjectId}-default`;
 
+      const existingRepoSuites = testSuites.filter((s) => s.repositoryId === targetRepoId);
+      const maxExistingOrder = existingRepoSuites.reduce((max, s) => Math.max(max, s.order ?? 0), 0);
+
       const suiteIdMap = new Map<string, string>();
-      const newSuites: TestSuite[] = (importedData.suites || []).map((s, idx) => {
-        const newSuiteId = `suite-${Date.now()}-${idx}`;
-        if (s.id) suiteIdMap.set(s.id, newSuiteId);
+      const suiteNameMap = new Map<string, string>();
+      const rawSuites = Array.isArray(importedData.suites) ? importedData.suites : [];
+      const newSuites: TestSuite[] = rawSuites.map((s: any, idx: number) => {
+        const newSuiteId = `suite-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (s.id) suiteIdMap.set(String(s.id), newSuiteId);
+        if (s.name) suiteNameMap.set(String(s.name).trim().toLowerCase(), newSuiteId);
+        const rawOrder = typeof s.order === 'number' ? maxExistingOrder + s.order : maxExistingOrder + (idx + 1) * 10;
         return {
           id: newSuiteId,
           projectId: targetProjectId,
@@ -1244,27 +1315,46 @@ export default function App() {
           name: s.name || `Imported Suite ${idx + 1}`,
           description: s.description || '',
           parentId: null,
+          order: rawOrder,
           caseCount: 0,
         };
       });
 
-      (importedData.suites || []).forEach((oldS, idx) => {
-        if (oldS.parentId && suiteIdMap.has(oldS.parentId)) {
-          newSuites[idx].parentId = suiteIdMap.get(oldS.parentId) || null;
+      // Link parentId references maintaining exact tree hierarchy
+      rawSuites.forEach((oldS: any, idx: number) => {
+        if (oldS.parentId) {
+          const mappedParentId =
+            suiteIdMap.get(String(oldS.parentId)) ||
+            suiteNameMap.get(String(oldS.parentId).trim().toLowerCase()) ||
+            null;
+          newSuites[idx].parentId = mappedParentId;
         }
       });
 
       const fallbackSuite = activeTestSuites[0] || newSuites[0];
 
+      const caseIdMap = new Map<string, string>();
       const newCases: TestCase[] = (importedData.testCases || []).map((tc, idx) => {
-        const mappedSuiteId =
-          (tc.suiteId && suiteIdMap.get(tc.suiteId)) || fallbackSuite?.id || 'default';
+        const newCaseId = `case-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        if (tc.id) caseIdMap.set(String(tc.id), newCaseId);
+
+        let mappedSuiteId: string | null = null;
+        if (tc.suiteId && suiteIdMap.has(String(tc.suiteId))) {
+          mappedSuiteId = suiteIdMap.get(String(tc.suiteId))!;
+        } else if (tc.suiteName && suiteNameMap.has(String(tc.suiteName).trim().toLowerCase())) {
+          mappedSuiteId = suiteNameMap.get(String(tc.suiteName).trim().toLowerCase())!;
+        }
+
+        if (!mappedSuiteId) {
+          mappedSuiteId = fallbackSuite?.id || newSuites[0]?.id || 'default';
+        }
+
         const targetSuite =
           newSuites.find((s) => s.id === mappedSuiteId) ||
           activeTestSuites.find((s) => s.id === mappedSuiteId);
 
         return {
-          id: `case-${Date.now()}-${idx}`,
+          id: newCaseId,
           projectId: targetProjectId,
           repositoryId: targetRepoId,
           key: `${targetProjectKey}-${Math.floor(200 + Math.random() * 800)}`,
@@ -1286,9 +1376,14 @@ export default function App() {
           attachments: tc.attachments || [],
           comments: tc.comments || [],
           customFields: Array.isArray(tc.customFields) ? tc.customFields : [],
-          createdAt: new Date().toISOString(),
+          createdAt: tc.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
+      });
+
+      // Synchronize exact caseCount per suite
+      newSuites.forEach((s) => {
+        s.caseCount = newCases.filter((c) => c.suiteId === s.id).length;
       });
 
       if (newSuites.length > 0) {

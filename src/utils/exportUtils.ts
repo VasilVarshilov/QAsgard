@@ -192,6 +192,61 @@ export function sortTestCasesChronological(cases: TestCase[]): TestCase[] {
 
 /**
  * Sorts test cases strictly according to the hierarchical suite tree structure of the repository:
+/**
+ * Recursively resolves and sorts suites in strict hierarchical tree order:
+ * 1. Root suites in explicit order / natural comparison
+ * 2. Nested child suites recursively beneath their respective parent in explicit order / natural comparison
+ * 3. Guarantees a deterministic integer `order` attribute on every suite
+ */
+export function getOrderedSuitesTree(suites: TestSuite[]): TestSuite[] {
+  if (!suites || suites.length === 0) return [];
+
+  const childrenMap = new Map<string, TestSuite[]>();
+  const rootSuites: TestSuite[] = [];
+  const suiteIdSet = new Set(suites.map((s) => s.id));
+
+  const sortSiblings = (list: TestSuite[]) => {
+    return [...list].sort((a, b) => {
+      if (typeof a.order === 'number' && typeof b.order === 'number') {
+        if (a.order !== b.order) return a.order - b.order;
+      } else if (typeof a.order === 'number') {
+        return -1;
+      } else if (typeof b.order === 'number') {
+        return 1;
+      }
+      return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true });
+    });
+  };
+
+  suites.forEach((s) => {
+    if (!s.parentId || !suiteIdSet.has(s.parentId)) {
+      rootSuites.push(s);
+    } else {
+      const list = childrenMap.get(s.parentId) || [];
+      list.push(s);
+      childrenMap.set(s.parentId, list);
+    }
+  });
+
+  const ordered: TestSuite[] = [];
+  const traverse = (parentList: TestSuite[]) => {
+    const sorted = sortSiblings(parentList);
+    sorted.forEach((suite, idx) => {
+      const explicitOrder = typeof suite.order === 'number' ? suite.order : (idx + 1) * 10;
+      ordered.push({ ...suite, order: explicitOrder });
+      const children = childrenMap.get(suite.id);
+      if (children && children.length > 0) {
+        traverse(children);
+      }
+    });
+  };
+
+  traverse(rootSuites);
+  return ordered;
+}
+
+/**
+ * Sorts test cases strictly according to the hierarchical suite tree structure of the repository:
  * 1. Root suites in suite order / natural sort
  * 2. Child suites recursively under their parent
  * 3. Cases within each suite in natural chronological / key sort
@@ -202,43 +257,7 @@ export function sortTestCasesTreeOrder(cases: TestCase[], suites: TestSuite[] = 
     return sortTestCasesChronological(cases);
   }
 
-  const childMap = new Map<string, TestSuite[]>();
-  const rootSuites: TestSuite[] = [];
-
-  const sortSuitesList = (list: TestSuite[]) => {
-    return [...list].sort((a, b) => {
-      if (typeof a.order === 'number' && typeof b.order === 'number') {
-        return a.order - b.order;
-      }
-      if (typeof a.order === 'number') return -1;
-      if (typeof b.order === 'number') return 1;
-      return (a.name || '').localeCompare(b.name || '');
-    });
-  };
-
-  suites.forEach((s) => {
-    if (!s.parentId || !suites.some((other) => other.id === s.parentId)) {
-      rootSuites.push(s);
-    } else {
-      const existing = childMap.get(s.parentId) || [];
-      existing.push(s);
-      childMap.set(s.parentId, existing);
-    }
-  });
-
-  const orderedSuites: TestSuite[] = [];
-  const traverse = (currentSuites: TestSuite[]) => {
-    const sorted = sortSuitesList(currentSuites);
-    for (const s of sorted) {
-      orderedSuites.push(s);
-      const children = childMap.get(s.id);
-      if (children && children.length > 0) {
-        traverse(children);
-      }
-    }
-  };
-  traverse(rootSuites);
-
+  const orderedSuites = getOrderedSuitesTree(suites);
   const casesBySuiteId = new Map<string, TestCase[]>();
   const unassignedCases: TestCase[] = [];
   const knownSuiteIds = new Set(suites.map((s) => s.id));
@@ -277,7 +296,8 @@ export function exportSuiteAsJson(
   cases: TestCase[],
   suites: TestSuite[] = []
 ): string {
-  const sortedCases = sortTestCasesTreeOrder(cases, suites);
+  const orderedSuites = getOrderedSuitesTree(suites);
+  const sortedCases = sortTestCasesTreeOrder(cases, orderedSuites);
 
   const exportData = {
     title: `${project.name} - Test Specification (${suiteName})`,
@@ -299,13 +319,14 @@ export function exportSuiteAsJson(
         (c) => c.priority === 'high' || c.priority === 'highest'
       ).length,
     },
-    suites: suites.map((s) => ({
+    suites: orderedSuites.map((s, idx) => ({
       id: s.id,
       name: s.name,
-      description: s.description,
+      description: s.description || '',
       parentId: s.parentId || null,
-      order: s.order,
-      caseCount: getTestCasesForSuite(s.id, suites, sortedCases).length,
+      order: typeof s.order === 'number' ? s.order : (idx + 1) * 10,
+      repositoryId: s.repositoryId,
+      caseCount: getTestCasesForSuite(s.id, orderedSuites, sortedCases).length,
     })),
     testCases: sortedCases.map((tc) => ({
       id: tc.id,
@@ -1368,7 +1389,8 @@ export function exportRepositoryAsJson(
   suites: TestSuite[],
   cases: TestCase[]
 ): string {
-  const sortedCases = sortTestCasesChronological(cases);
+  const orderedSuites = getOrderedSuitesTree(suites);
+  const sortedCases = sortTestCasesTreeOrder(cases, orderedSuites);
   const data = {
     version: '1.0',
     type: 'qasgard_repository_export',
@@ -1380,16 +1402,18 @@ export function exportRepositoryAsJson(
       description: project.description || '',
     },
     statistics: {
-      totalSuites: suites.length,
+      totalSuites: orderedSuites.length,
       totalCases: sortedCases.length,
       automatedCases: sortedCases.filter((c) => c.automationStatus === 'automated').length,
       manualCases: sortedCases.filter((c) => c.automationStatus === 'manual').length,
     },
-    suites: suites.map((s) => ({
+    suites: orderedSuites.map((s, idx) => ({
       id: s.id,
       name: s.name,
       description: s.description || '',
       parentId: s.parentId || null,
+      order: typeof s.order === 'number' ? s.order : (idx + 1) * 10,
+      repositoryId: s.repositoryId,
     })),
     testCases: sortedCases.map((tc) => ({
       id: tc.id,
@@ -1439,7 +1463,8 @@ export function exportProjectAsJson(
   defects?: Defect[],
   requirements?: Requirement[]
 ): string {
-  const sortedCases = sortTestCasesChronological(cases);
+  const orderedSuites = getOrderedSuitesTree(suites);
+  const sortedCases = sortTestCasesTreeOrder(cases, orderedSuites);
   const data = {
     version: '1.0',
     type: 'qasgard_project_export',
@@ -1450,7 +1475,7 @@ export function exportProjectAsJson(
       key: project.key,
       description: project.description || '',
       organizationId: project.organizationId,
-      suiteCount: suites.length,
+      suiteCount: orderedSuites.length,
       caseCount: sortedCases.length,
       openBugsCount: defects ? defects.filter((d) => d.status === 'open' || d.status === 'in_progress').length : 0,
     },
@@ -1462,15 +1487,15 @@ export function exportProjectAsJson(
       isDefault: r.isDefault,
       createdAt: r.createdAt,
     })),
-    suites: suites.map((s) => ({
+    suites: orderedSuites.map((s, idx) => ({
       id: s.id,
       projectId: s.projectId,
       repositoryId: s.repositoryId,
       name: s.name,
       description: s.description || '',
       parentId: s.parentId || null,
-      order: s.order,
-      caseCount: getTestCasesForSuite(s.id, suites, sortedCases).length,
+      order: typeof s.order === 'number' ? s.order : (idx + 1) * 10,
+      caseCount: getTestCasesForSuite(s.id, orderedSuites, sortedCases).length,
     })),
     testCases: sortedCases.map((tc) => ({
       id: tc.id,
